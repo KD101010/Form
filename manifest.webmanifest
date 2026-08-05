@@ -1,0 +1,9 @@
+{
+  "name": "Form Workout",
+  "short_name": "Form",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f7f5f1",
+  "theme_color": "#f7f5f1",
+  "description": "A clean, personalized workout generator."
+}
