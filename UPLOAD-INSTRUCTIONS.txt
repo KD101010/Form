@@ -1,0 +1,23 @@
+FORM ICON UPDATE
+
+Upload every file in this folder to the ROOT of the existing GitHub repository.
+
+Files that replace existing files:
+- index.html
+- manifest.webmanifest
+- sw.js
+- apple-touch-icon.png
+- icon-192.png
+- icon-512.png
+
+New versioned files:
+- apple-touch-icon-v3.png
+- icon-192-v3.png
+- icon-512-v3.png
+
+Suggested commit message:
+Upgrade Form home screen icon
+
+After GitHub Pages deploys, delete the existing Form icon from the iPhone
+Home Screen and add it again from Safari. Existing Home Screen icons do not
+always refresh their artwork automatically.

@@ -1,13 +1,13 @@
-const CACHE = 'form-v2-20260805-1';
+const CACHE = 'form-v2-20260805-icon-v3';
 const APP_SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
   './manifest.webmanifest',
-  './icon-192.png',
-  './icon-512.png',
-  './apple-touch-icon.png'
+  './icon-192-v3.png',
+  './icon-512-v3.png',
+  './apple-touch-icon-v3.png'
 ];
 
 self.addEventListener('install', event => {
