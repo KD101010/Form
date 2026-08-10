@@ -1,64 +1,61 @@
-# Form Workout App v2
+# Form Beta v3.0
 
-## What changed
+Form is a mobile-first workout app built to remove workout decision fatigue.
 
-- Glutes and legs are now separate choices.
-- The first screen now has 14 training choices.
-- Up to four areas can be selected together.
-- Full body and Surprise me remain one-tap choices.
-- Equipment filtering now works for bodyweight, dumbbells, bands, home gyms, and full gyms.
-- Multiple caution areas can be selected.
-- Exercise substitutions respect the selected equipment and caution areas.
-- Weight and rep entries no longer disappear after checking off a set.
-- Each exercise has specific form guidance.
-- A rest timer starts after a completed set.
-- In-progress workouts are saved locally and can be resumed.
-- Workout history includes difficulty feedback.
-- The service worker was changed so GitHub Pages updates are less likely to remain stuck on an older cached version.
-- Home-screen icons are included.
+**Simple on the surface. Thoughtful underneath.**
 
-## Replace the current GitHub Pages version
+## What is new in v3.0
 
-1. Download and extract this ZIP on a computer.
-2. Open the extracted `form-workout-app-v2` folder.
-3. In GitHub, open the same repository currently hosting Form.
-4. Click **Add file**, then **Upload files**.
-5. Drag every file from this folder into the upload area:
-   - `index.html`
-   - `styles.css`
-   - `app.js`
-   - `sw.js`
-   - `manifest.webmanifest`
-   - `icon-192.png`
-   - `icon-512.png`
-   - `apple-touch-icon.png`
-   - `.nojekyll`
-   - `README.md`
-6. GitHub will warn that the existing files have the same names. That is expected. The new files will replace them.
-7. Enter a commit message such as `Update Form to version 2`.
-8. Commit directly to the `main` branch.
-9. Wait one to five minutes for GitHub Pages to redeploy.
-10. Open the live Form page and refresh it.
+- One-time onboarding for first name, goal, experience, normal schedule, equipment, limitations, muscle priorities, exercise dislikes, and training plan.
+- Time-based greeting using the user's first name.
+- A simple home screen with the next workout in the user's training sequence.
+- Training plans advance only when a planned workout is completed. Missing a day does not skip the sequence.
+- Daily goal, equipment, limitation, and energy questions were removed.
+- Optional **Adjust workout** controls for less time, easier/harder sessions, and temporary caution areas.
+- Profile, Training Plan, Equipment, Preferences, History, About Me, and Help / Send Feedback screens behind the three-dot menu.
+- Smarter exercise selection using equipment, experience, recent history, priorities, dislikes, limitations, and prior behavior.
+- Smarter swaps that move to a different exercise family instead of cycling through nearly identical variations.
+- Repeated swaps and skips quietly reduce how often those exercises are prescribed.
+- Prior weight and rep performance is remembered.
+- Previous performance is shown when useful.
+- Conservative weight progression can be suggested after completing the top of a rep range.
+- Completed workouts are tappable and show exercises, sets, reps, weights, swaps, and skipped exercises.
+- Body-weight entries are preserved as history rather than overwritten.
+- Optional post-workout difficulty feedback.
+- Interrupted workouts remain resumable.
+- The rest timer disappears immediately when **Skip** is tapped.
+- A beta feedback action uses the iPhone share sheet when supported.
+- The approved Form F icon is included for iPhone Home Screen installation.
 
-## If the iPhone still shows the old version
+## Existing user data
 
-The old app may still be cached.
+The update uses new v3 storage keys. Existing v2 workout history is automatically copied into the v3 history the first time the new version opens.
 
-1. Open the live GitHub Pages address directly in Safari.
-2. Refresh the page.
-3. Close Form completely and reopen it from the Home Screen.
-4. If it still shows the old version, delete the Form Home Screen icon.
-5. Open the live address again in Safari.
-6. Tap **Share**, then **Add to Home Screen**.
+The one-time onboarding will still appear because the previous version did not have a complete user profile or training plan.
 
-Your GitHub Pages setting should remain:
+Uploading the new files to GitHub does not delete browser data. Clearing Safari website data, using a different browser, or using another device will not carry the local history over.
 
-- Source: **Deploy from a branch**
-- Branch: **main**
-- Folder: **/(root)**
+## GitHub Pages upload
 
-You do not need to create a new repository, change the Pages setting, or keep the computer running.
+See `GITHUB-UPLOAD-GUIDE.txt` for the exact steps.
 
-## Important public-use limitations
+The GitHub Pages configuration remains:
 
-This is a polished static prototype reviewed as version 2.1. It stores data only in the current browser and does not yet include user accounts, cloud backup, coaching oversight, exercise videos, subscription billing, analytics, or a legal privacy policy/terms flow. It provides general fitness information and is not a medical product.
+- Source: Deploy from a branch
+- Branch: main
+- Folder: /(root)
+
+## Public beta limitations
+
+This remains a static beta stored in the current browser. It does not yet include:
+
+- accounts or cloud synchronization
+- licensed exercise demonstration videos
+- a hosted feedback database
+- analytics or crash reporting
+- subscription billing
+- professional medical or coaching oversight
+
+The workout rules are structured and personalized, but a qualified fitness professional should review the programming before a broad commercial release.
+
+Form provides general fitness information, not medical advice. Stop if a movement causes pain. People with an injury, pregnancy, chronic condition, or concerning symptoms should obtain guidance from a qualified professional.

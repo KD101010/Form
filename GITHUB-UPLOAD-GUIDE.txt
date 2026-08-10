@@ -1,0 +1,61 @@
+FORM V3.0 GITHUB UPLOAD GUIDE
+
+You are updating the SAME GitHub repository that already hosts Form.
+You do not need to create another repository or change the Pages settings.
+
+1. Download and extract the Form v3 ZIP on your computer.
+
+2. Open the extracted folder named:
+   form-github-v3
+
+3. In your web browser, open the existing GitHub repository that hosts Form.
+
+4. Click:
+   Add file
+   Upload files
+
+5. Drag EVERY file from inside the form-github-v3 folder into the GitHub upload box.
+
+   Important:
+   - Upload the individual files.
+   - Do not upload the ZIP itself.
+   - Do not drag the outer form-github-v3 folder as a nested folder.
+   - index.html must remain at the repository root.
+
+6. GitHub will show that several existing files are being replaced.
+   That is expected.
+
+7. Use this commit message:
+   Update Form to version 3.0
+
+8. Choose:
+   Commit directly to the main branch
+
+9. Click:
+   Commit changes
+
+10. Wait for GitHub Pages to redeploy.
+
+VERIFY THE UPDATE
+
+1. Open the live Form address directly in Safari.
+2. Refresh the page.
+3. The first opening should show the new one-time setup.
+4. After setup, the Home screen should show a time-based greeting and Today's workout.
+5. Open the three-dot menu and confirm Profile, Training Plan, Equipment,
+   Preferences, History, About Me, and Help / Send Feedback are present.
+
+IF THE OLD VERSION STILL APPEARS
+
+1. Open the live website directly in Safari and refresh it.
+2. Fully close the installed Form app.
+3. Reopen it from the Home Screen.
+4. If it remains old, delete the Form Home Screen icon.
+5. Open the live website in Safari.
+6. Tap the three dots at the bottom-right.
+7. Tap Share.
+8. Tap View More at the bottom.
+9. Tap Add to Home Screen.
+10. Add Form again.
+
+The approved F icon should appear in the Add to Home Screen preview.

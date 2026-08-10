@@ -1,5 +1,5 @@
 {
-  "name": "Form Workout",
+  "name": "Form",
   "short_name": "Form",
   "id": "./",
   "start_url": "./",
@@ -7,7 +7,7 @@
   "display": "standalone",
   "background_color": "#f7f5f1",
   "theme_color": "#f7f5f1",
-  "description": "A clean, personalized workout generator.",
+  "description": "Simple on the surface. Thoughtful underneath.",
   "icons": [
     {
       "src": "./icon-192-v3.png",

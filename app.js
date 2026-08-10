@@ -1,8 +1,13 @@
 const app = document.getElementById('app');
 
+const VERSION = '3.0.0';
+
 const STORAGE = {
-  history: 'form-history-v2',
-  current: 'form-current-v2'
+  profile: 'form-profile-v3',
+  history: 'form-history-v3',
+  current: 'form-current-v3',
+  behavior: 'form-behavior-v3',
+  legacyHistory: 'form-history-v2'
 };
 
 function safeLoad(key, fallback) {
@@ -26,83 +31,309 @@ function safeRemove(key) {
   } catch {}
 }
 
-const savedCurrent = safeLoad(STORAGE.current, null);
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
 
-const state = {
-  view: 'home',
-  step: 0,
-  focusNotice: '',
-  answers: savedCurrent?.answers || {
-    focuses: [],
-    goal: 'Build muscle',
-    time: 45,
-    setup: 'home',
-    energy: 'Good',
-    limitations: ['None']
+const setupPresets = {
+  bodyweight: {
+    label: 'Bodyweight only',
+    equipment: ['bodyweight']
   },
-  workout: savedCurrent?.workout || null,
-  activeIndex: savedCurrent?.activeIndex || 0,
-  session: {
-    active: Boolean(savedCurrent?.session?.active),
-    startedAt: null,
-    elapsedMs: savedCurrent?.session?.elapsedMs || 0
+  dumbbells: {
+    label: 'Dumbbells',
+    equipment: ['bodyweight', 'dumbbells']
   },
-  restUntil: null,
-  timerId: null,
-  pendingSummary: null,
-  history: safeLoad(STORAGE.history, [])
+  bands: {
+    label: 'Resistance bands',
+    equipment: ['bodyweight', 'bands']
+  },
+  home: {
+    label: 'Home gym',
+    equipment: ['bodyweight', 'dumbbells', 'bands', 'barbell', 'bench', 'cardio']
+  },
+  gym: {
+    label: 'Full gym',
+    equipment: ['bodyweight', 'dumbbells', 'bands', 'barbell', 'bench', 'cable', 'machine', 'cardio']
+  },
+  custom: {
+    label: 'Custom equipment',
+    equipment: ['bodyweight']
+  }
 };
+
+const equipmentChoices = [
+  ['dumbbells', 'Dumbbells'],
+  ['bands', 'Resistance bands'],
+  ['barbell', 'Barbell'],
+  ['bench', 'Bench'],
+  ['cable', 'Cable station'],
+  ['machine', 'Machines'],
+  ['cardio', 'Cardio equipment']
+];
+
+const limitationChoices = ['None', 'Knees', 'Lower back', 'Shoulders', 'Wrists'];
+const priorityChoices = ['Glutes', 'Legs', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core'];
+const goalChoices = ['Lose fat / get leaner', 'Build muscle', 'Maintain', 'Get stronger', 'General fitness'];
+const experienceChoices = ['Beginner', 'Intermediate', 'Advanced'];
 
 const focusSections = [
   { title: 'Lower body', options: ['Glutes', 'Legs', 'Quads', 'Hamstrings', 'Calves'] },
-  { title: 'Upper body', options: ['Back', 'Chest', 'Shoulders', 'Arms'] },
-  { title: 'Core + movement', options: ['Core', 'Full body', 'Cardio', 'Mobility + recovery', 'Surprise me'] }
+  { title: 'Upper body', options: ['Back', 'Chest', 'Shoulders', 'Arms', 'Upper body'] },
+  { title: 'Core + movement', options: ['Core', 'Full body', 'Cardio', 'Mobility + recovery', 'Pick for me'] }
 ];
 
-const specialFocuses = ['Full body', 'Surprise me'];
+const specialFocuses = ['Full body', 'Upper body', 'Pick for me'];
 
-const steps = [
-  { key: 'focuses', title: 'What do you want to train?', copy: 'Choose one area or combine up to four.' },
-  {
-    key: 'goal',
-    title: 'What is the goal?',
-    copy: 'This changes the volume, rep range, and pace.',
-    options: ['Build muscle', 'Get stronger', 'Support fat loss', 'Maintain', 'General fitness']
-  },
-  { key: 'time', title: 'How much time do you have?', copy: 'The workout will stay inside this window.', range: true },
-  {
-    key: 'setup',
-    title: 'What equipment is available?',
-    copy: 'Form will only choose movements that fit your setup.',
-    options: [
-      ['bodyweight', 'Bodyweight only'],
-      ['dumbbells', 'Dumbbells'],
-      ['bands', 'Resistance bands'],
-      ['home', 'Home gym'],
-      ['gym', 'Full gym']
-    ]
-  },
-  {
-    key: 'energy',
-    title: 'How is your energy?',
-    copy: 'The best session is the one that fits today.',
-    options: ['Low', 'Good', 'High']
-  },
-  {
-    key: 'limitations',
-    title: 'Anything to be cautious with?',
-    copy: 'Select all that apply. This is not a medical screening.',
-    options: ['None', 'Knees', 'Lower back', 'Shoulders', 'Wrists']
-  }
-];
-
-const setups = {
-  bodyweight: { label: 'Bodyweight only', allowed: ['bodyweight'] },
-  dumbbells: { label: 'Dumbbells', allowed: ['bodyweight', 'dumbbells'] },
-  bands: { label: 'Resistance bands', allowed: ['bodyweight', 'bands'] },
-  home: { label: 'Home gym', allowed: ['bodyweight', 'dumbbells', 'bands', 'barbell', 'bench', 'cardio'] },
-  gym: { label: 'Full gym', allowed: ['bodyweight', 'dumbbells', 'bands', 'barbell', 'bench', 'cable', 'machine', 'cardio'] }
+const splitDefinitions = {
+  'Full Body': [
+    { title: 'Full Body', focuses: ['Full body'] }
+  ],
+  'Upper / Lower': [
+    { title: 'Upper Body', focuses: ['Upper body'] },
+    { title: 'Lower Body + Glutes', focuses: ['Legs', 'Glutes'] }
+  ],
+  'Push / Pull / Legs': [
+    { title: 'Push', focuses: ['Chest', 'Shoulders', 'Arms'] },
+    { title: 'Pull', focuses: ['Back', 'Arms'] },
+    { title: 'Legs + Glutes', focuses: ['Legs', 'Glutes'] }
+  ],
+  'Push / Pull / Legs repeated': [
+    { title: 'Push', focuses: ['Chest', 'Shoulders', 'Arms'] },
+    { title: 'Pull', focuses: ['Back', 'Arms'] },
+    { title: 'Legs + Glutes', focuses: ['Legs', 'Glutes'] },
+    { title: 'Push', focuses: ['Chest', 'Shoulders', 'Arms'] },
+    { title: 'Pull', focuses: ['Back', 'Arms'] },
+    { title: 'Legs + Glutes', focuses: ['Legs', 'Glutes'] }
+  ],
+  'Upper / Lower / Full Body': [
+    { title: 'Upper Body', focuses: ['Upper body'] },
+    { title: 'Lower Body + Glutes', focuses: ['Legs', 'Glutes'] },
+    { title: 'Full Body', focuses: ['Full body'] }
+  ],
+  'Upper / Lower / Push / Pull / Legs': [
+    { title: 'Upper Body', focuses: ['Upper body'] },
+    { title: 'Lower Body + Glutes', focuses: ['Legs', 'Glutes'] },
+    { title: 'Push', focuses: ['Chest', 'Shoulders', 'Arms'] },
+    { title: 'Pull', focuses: ['Back', 'Arms'] },
+    { title: 'Legs + Glutes', focuses: ['Legs', 'Glutes'] }
+  ],
+  'Glute-focused': [
+    { title: 'Glutes + Hamstrings', focuses: ['Glutes', 'Hamstrings'] },
+    { title: 'Upper Body', focuses: ['Upper body'] },
+    { title: 'Glutes + Quads', focuses: ['Glutes', 'Quads'] },
+    { title: 'Back + Core', focuses: ['Back', 'Core'] }
+  ],
+  'Strength-focused': [
+    { title: 'Full-Body Strength A', focuses: ['Legs', 'Chest', 'Back'] },
+    { title: 'Full-Body Strength B', focuses: ['Glutes', 'Shoulders', 'Back'] },
+    { title: 'Full-Body Strength C', focuses: ['Legs', 'Chest', 'Core'] }
+  ],
+  'Traditional body-part split': [
+    { title: 'Chest + Triceps', focuses: ['Chest', 'Arms'] },
+    { title: 'Back + Biceps', focuses: ['Back', 'Arms'] },
+    { title: 'Legs + Glutes', focuses: ['Legs', 'Glutes'] },
+    { title: 'Shoulders + Core', focuses: ['Shoulders', 'Core'] }
+  ]
 };
+
+function defaultProfile() {
+  return {
+    onboarded: false,
+    firstName: '',
+    lastName: '',
+    goal: 'General fitness',
+    experience: 'Beginner',
+    daysPerWeek: 3,
+    duration: 45,
+    setup: 'home',
+    equipment: [...setupPresets.home.equipment],
+    limitations: ['None'],
+    musclePriorities: [],
+    dislikes: '',
+    splitMode: 'form',
+    splitName: 'Full Body',
+    splitSequence: clone(splitDefinitions['Full Body']),
+    splitIndex: 0,
+    weightHistory: [],
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function normalizeGoal(goal) {
+  if (goal === 'Support fat loss' || goal === 'Slim + tone') return 'Lose fat / get leaner';
+  return goalChoices.includes(goal) ? goal : 'General fitness';
+}
+
+function normalizeProfile(raw) {
+  const base = defaultProfile();
+  if (!raw || typeof raw !== 'object') return base;
+  const profile = { ...base, ...raw };
+  profile.goal = normalizeGoal(profile.goal);
+  profile.firstName = String(profile.firstName || '').trim();
+  profile.lastName = String(profile.lastName || '').trim();
+  profile.daysPerWeek = clampNumber(profile.daysPerWeek, 1, 6, 3);
+  profile.duration = clampNumber(profile.duration, 15, 75, 45);
+  profile.setup = setupPresets[profile.setup] ? profile.setup : 'home';
+  profile.equipment = Array.isArray(profile.equipment) && profile.equipment.length
+    ? [...new Set(['bodyweight', ...profile.equipment])]
+    : [...setupPresets[profile.setup].equipment];
+  profile.limitations = normalizeNoneArray(profile.limitations, limitationChoices);
+  profile.musclePriorities = Array.isArray(profile.musclePriorities)
+    ? profile.musclePriorities.filter(item => priorityChoices.includes(item)).slice(0, 3)
+    : [];
+  profile.weightHistory = Array.isArray(profile.weightHistory) ? profile.weightHistory : [];
+  profile.splitMode = profile.splitMode === 'custom' ? 'custom' : 'form';
+  const validSplit = splitDefinitions[profile.splitName] ? profile.splitName : recommendSplit(profile);
+  profile.splitName = validSplit;
+  profile.splitSequence = clone(splitDefinitions[validSplit]);
+  profile.splitIndex = clampNumber(profile.splitIndex, 0, Math.max(0, profile.splitSequence.length - 1), 0);
+  return profile;
+}
+
+function clampNumber(value, min, max, fallback) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+function normalizeNoneArray(value, allowed) {
+  const array = Array.isArray(value) ? value.filter(item => allowed.includes(item)) : ['None'];
+  if (!array.length || array.includes('None')) return ['None'];
+  return [...new Set(array)];
+}
+
+function loadHistory() {
+  const current = safeLoad(STORAGE.history, null);
+  if (Array.isArray(current)) return current;
+  const legacy = safeLoad(STORAGE.legacyHistory, []);
+  const migrated = Array.isArray(legacy)
+    ? legacy.map((item, index) => ({
+        id: item.id || `legacy-${Date.now()}-${index}`,
+        date: item.date || new Date().toISOString(),
+        title: item.title || 'Workout',
+        minutes: Number(item.minutes) || 0,
+        completedSets: Number(item.completedSets) || 0,
+        exercises: Number(item.exercises) || item.details?.length || 0,
+        focuses: Array.isArray(item.focuses) ? item.focuses : [],
+        feedback: item.feedback || 'Not rated',
+        source: 'legacy',
+        details: Array.isArray(item.details)
+          ? item.details.map(detail => ({
+              id: detail.id || '',
+              name: detail.name || 'Exercise',
+              family: detail.family || '',
+              muscle: detail.muscle || '',
+              skipped: Boolean(detail.skipped),
+              sets: Array.isArray(detail.sets) ? detail.sets : []
+            }))
+          : [],
+        swaps: Array.isArray(item.swaps) ? item.swaps : [],
+        skipped: Array.isArray(item.skipped) ? item.skipped : []
+      }))
+    : [];
+  safeSave(STORAGE.history, migrated);
+  return migrated;
+}
+
+function defaultBehavior() {
+  return {
+    exerciseRejects: {},
+    familyRejects: {},
+    exerciseSkips: {},
+    completedExercises: {}
+  };
+}
+
+function normalizeBehavior(raw) {
+  return { ...defaultBehavior(), ...(raw || {}) };
+}
+
+function inferFamily(id) {
+  if (/^(brisk-walk|low-impact-circuit|shadow-boxing|incline-walk|bike-intervals|rower-intervals|elliptical-intervals|jump-rope)$/.test(id)) return `cardio-${id}`;
+  if (id === 'banded-lateral-walk') return 'hip-abduction';
+  if (/hip-thrust|glute-bridge|frog-pump/.test(id)) return 'bridge-hip-extension';
+  if (/rdl/.test(id)) return 'hip-hinge';
+  if (/reverse-lunge|split-squat|step-up/.test(id)) return 'unilateral-knee-dominant';
+  if (/squat|leg-press|wall-sit|leg-extension/.test(id)) return 'squat-knee-dominant';
+  if (/hamstring-curl|leg-curl/.test(id)) return 'knee-flexion';
+  if (/calf/.test(id)) return 'calf-raise';
+  if (/pulldown|pullover/.test(id)) return 'vertical-pull';
+  if (/row|reverse-snow|prone-w/.test(id)) return 'horizontal-pull';
+  if (/shoulder-press|landmine-press/.test(id)) return 'vertical-push';
+  if (/pushup|chest-press|floor-press|bench-press|squeeze-press/.test(id)) return 'horizontal-push';
+  if (/lateral-raise|rear-delt|face-pull|pull-apart|wall-slide/.test(id)) return 'shoulder-accessory';
+  if (/curl/.test(id) && !/hamstring|leg-curl/.test(id)) return 'elbow-flexion';
+  if (/triceps|pressdown|kickback|close-grip/.test(id)) return 'elbow-extension';
+  if (/dead-bug|heel-taps|reverse-crunch|hollow/.test(id)) return 'anterior-core';
+  if (/plank/.test(id)) return 'plank-core';
+  if (/bird-dog/.test(id)) return 'contralateral-core';
+  if (/pallof/.test(id)) return 'anti-rotation-core';
+  if (/9090|rotation|cat-cow|sweep|ankle-rock|stretch|child-pose|side-bend/.test(id)) return `mobility-${id}`;
+  return id;
+}
+
+function inferPattern(id, focuses, kind) {
+  if (kind === 'cardio') return 'conditioning';
+  if (kind === 'mobility') return 'mobility';
+  const family = inferFamily(id);
+  const map = {
+    'bridge-hip-extension': 'hip extension',
+    'hip-hinge': 'hip hinge',
+    'unilateral-knee-dominant': 'single-leg',
+    'squat-knee-dominant': 'squat',
+    'knee-flexion': 'knee flexion',
+    'calf-raise': 'ankle extension',
+    'vertical-pull': 'vertical pull',
+    'horizontal-pull': 'horizontal pull',
+    'vertical-push': 'vertical push',
+    'horizontal-push': 'horizontal push',
+    'shoulder-accessory': 'shoulder accessory',
+    'elbow-flexion': 'arm isolation',
+    'elbow-extension': 'arm isolation',
+    'anterior-core': 'core control',
+    'plank-core': 'core stability',
+    'contralateral-core': 'core stability',
+    'anti-rotation-core': 'anti-rotation'
+  };
+  return map[family] || focuses[0] || 'strength';
+}
+
+function inferRole(id, kind) {
+  if (kind !== 'strength' && kind !== 'time') return kind;
+  const compound = /hip-thrust|lunge|split-squat|step-up|squat|leg-press|rdl|row|pulldown|pushup|press|landmine|pallof/.test(id);
+  return compound ? 'compound' : 'accessory';
+}
+
+function inferDifficulty(id) {
+  if (/barbell-back-squat|single-leg-rdl|inverted-row|landmine-press|hollow-hold|jump-rope/.test(id)) return 'advanced';
+  if (/bulgarian|split-squat|step-up|barbell-rdl|side-plank|pushup/.test(id)) return 'intermediate';
+  return 'beginner';
+}
+
+function requiredEquipment(equipment) {
+  if (equipment === 'bench') return ['dumbbells', 'bench'];
+  return [equipment];
+}
+
+function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength') {
+  return {
+    id,
+    name,
+    focuses,
+    muscle,
+    equipment,
+    requires: requiredEquipment(equipment),
+    avoid,
+    cue,
+    kind,
+    family: inferFamily(id),
+    pattern: inferPattern(id, focuses, kind),
+    role: inferRole(id, kind),
+    difficulty: inferDifficulty(id),
+    video: null
+  };
+}
 
 const exerciseLibrary = [
   // Glutes
@@ -219,52 +450,482 @@ const exerciseLibrary = [
   ex('standing-side-bend', 'Standing side bend', ['Mobility + recovery'], 'Torso mobility', 'bodyweight', [], 'Stay tall and reach gently without twisting or collapsing forward.', 'mobility')
 ];
 
-function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength') {
-  return { id, name, focuses, muscle, equipment, avoid, cue, kind };
-}
+
+const savedCurrent = safeLoad(STORAGE.current, null);
+const state = {
+  view: 'home',
+  profile: normalizeProfile(safeLoad(STORAGE.profile, null)),
+  history: loadHistory(),
+  behavior: normalizeBehavior(safeLoad(STORAGE.behavior, null)),
+  workout: savedCurrent?.workout || null,
+  answers: savedCurrent?.answers || null,
+  activeIndex: savedCurrent?.activeIndex || 0,
+  session: {
+    active: Boolean(savedCurrent?.session?.active),
+    startedAt: null,
+    elapsedMs: savedCurrent?.session?.elapsedMs || 0
+  },
+  restUntil: null,
+  timerId: null,
+  focusNotice: '',
+  onboarding: {
+    step: 0,
+    draft: null
+  },
+  settingsDraft: null,
+  quickAdjustment: null,
+  adjustmentReturn: 'home',
+  lastCompletedId: null
+};
 
 function nav(active = state.view) {
   return `<nav class="nav" aria-label="Main navigation">
     <button class="${active === 'home' ? 'active' : ''}" onclick="goHome()">Home</button>
     <button class="${active === 'workout' || active === 'active' ? 'active' : ''}" onclick="openLatest()">Workout</button>
-    <button class="${active === 'history' ? 'active' : ''}" onclick="showHistory()">History</button>
+    <button class="${active === 'history' || active === 'history-detail' ? 'active' : ''}" onclick="showHistory()">History</button>
   </nav>`;
+}
+
+function renderInitial() {
+  if (!state.profile.onboarded) {
+    startOnboarding();
+  } else {
+    renderHome();
+  }
+}
+
+function startOnboarding() {
+  stopUiTimer();
+  state.onboarding.step = 0;
+  state.onboarding.draft = normalizeProfile(state.profile);
+  renderOnboarding();
+}
+
+const onboardingSteps = ['name', 'goal', 'experience', 'schedule', 'equipment', 'limitations', 'priorities', 'plan'];
+
+function renderOnboarding() {
+  stopUiTimer();
+  state.view = 'onboarding';
+  const draft = state.onboarding.draft;
+  const key = onboardingSteps[state.onboarding.step];
+  const progress = ((state.onboarding.step + 1) / onboardingSteps.length) * 100;
+  const content = onboardingContent(key, draft);
+  const canContinue = onboardingCanContinue(key, draft);
+
+  app.innerHTML = `
+    <div class="step-header">
+      ${state.onboarding.step > 0
+        ? '<button class="icon-button" aria-label="Go back" onclick="onboardingBack()">←</button>'
+        : '<div class="brand">FORM</div>'}
+      <div class="step-meta">
+        <span class="step-count">${state.onboarding.step + 1} of ${onboardingSteps.length}</span>
+        <div class="progress-track" aria-label="Setup progress">
+          <div class="progress-fill" style="width:${progress}%"></div>
+        </div>
+      </div>
+    </div>
+    ${content}
+    <div class="builder-actions">
+      <div class="footer-actions ${state.onboarding.step === 0 ? 'single' : ''}">
+        ${state.onboarding.step > 0 ? '<button class="ghost-button" onclick="onboardingBack()">Back</button>' : ''}
+        <button class="primary-button" ${canContinue ? '' : 'disabled'} onclick="onboardingNext()">
+          ${state.onboarding.step === onboardingSteps.length - 1 ? 'Finish setup' : 'Continue'}
+        </button>
+      </div>
+    </div>`;
+}
+
+function onboardingContent(key, draft) {
+  if (key === 'name') {
+    return `
+      <section class="hero">
+        <div class="eyebrow">Welcome to Form</div>
+        <h1>Workouts without the planning.</h1>
+        <p class="lede">A few one-time choices help Form make future workouts almost effortless.</p>
+      </section>
+      <section class="card">
+        <label class="field-label" for="firstName">First name</label>
+        <input id="firstName" class="text-input" autocomplete="given-name" value="${escapeHtml(draft.firstName)}" placeholder="First name" oninput="setOnboardingField('firstName', this.value)" />
+      </section>`;
+  }
+
+  if (key === 'goal') {
+    return questionLayout(
+      'Your primary goal',
+      'Form will use this to set the general training volume, rep range, and pace.',
+      optionList(goalChoices, draft.goal, "setOnboardingField('goal', VALUE)")
+    );
+  }
+
+  if (key === 'experience') {
+    return questionLayout(
+      'Training experience',
+      'Choose the option that best matches your current comfort level.',
+      optionList(experienceChoices, draft.experience, "setOnboardingField('experience', VALUE)", {
+        Beginner: 'New or returning after a long break',
+        Intermediate: 'Training consistently with basic movements',
+        Advanced: 'Comfortable managing load and technique'
+      })
+    );
+  }
+
+  if (key === 'schedule') {
+    return `
+      <section class="hero">
+        <h2 class="question-title">Your normal schedule</h2>
+        <p class="question-copy">These become defaults. You can still shorten or adjust any individual workout.</p>
+      </section>
+      <section class="card">
+        <div class="field-label">Days per week</div>
+        <div class="chip-grid six">
+          ${[1, 2, 3, 4, 5, 6].map(value => chipButton(
+            `${value}`,
+            draft.daysPerWeek === value,
+            `setOnboardingNumber('daysPerWeek', ${value})`
+          )).join('')}
+        </div>
+        <div class="field-label field-gap">Preferred workout length</div>
+        <div class="chip-grid">
+          ${[20, 30, 45, 60].map(value => chipButton(
+            `${value} min`,
+            draft.duration === value,
+            `setOnboardingNumber('duration', ${value})`
+          )).join('')}
+        </div>
+      </section>`;
+  }
+
+  if (key === 'equipment') {
+    return questionLayout(
+      'Where do you usually train?',
+      'Choose the setup that best represents the equipment normally available.',
+      Object.entries(setupPresets)
+        .filter(([key]) => key !== 'custom')
+        .map(([value, setup]) => optionButton(
+          setup.label,
+          draft.setup === value,
+          `setOnboardingSetup('${value}')`
+        )).join('')
+    );
+  }
+
+  if (key === 'limitations') {
+    return `
+      <section class="hero">
+        <h2 class="question-title">Anything to avoid?</h2>
+        <p class="question-copy">Select all that apply. Form uses these as exercise filters, not as a medical screening.</p>
+      </section>
+      <div class="option-grid">
+        ${limitationChoices.map(value => optionButton(
+          value,
+          draft.limitations.includes(value),
+          `toggleOnboardingArray('limitations', '${escapeJs(value)}', true)`
+        )).join('')}
+      </div>
+      <p class="helper">Stop if a movement causes pain. Form cannot diagnose an injury or replace qualified medical guidance.</p>`;
+  }
+
+  if (key === 'priorities') {
+    return `
+      <section class="hero">
+        <h2 class="question-title">Any priorities?</h2>
+        <p class="question-copy">Optional. Pick up to three areas Form should favor when it has room to choose.</p>
+      </section>
+      <div class="option-grid two-column">
+        ${priorityChoices.map(value => optionButton(
+          value,
+          draft.musclePriorities.includes(value),
+          `toggleOnboardingPriority('${escapeJs(value)}')`,
+          true
+        )).join('')}
+      </div>
+      <section class="card">
+        <label class="field-label" for="dislikes">Exercises or movements you dislike <span>optional</span></label>
+        <input id="dislikes" class="text-input" value="${escapeHtml(draft.dislikes)}" placeholder="Example: burpees, jumping, back squats" oninput="setOnboardingField('dislikes', this.value)" />
+      </section>`;
+  }
+
+  const recommendation = recommendSplit(draft);
+  const selectedSplit = draft.splitMode === 'form' ? recommendation : draft.splitName;
+  return `
+    <section class="hero">
+      <h2 class="question-title">Choose a training plan</h2>
+      <p class="question-copy">Form treats a split as a sequence. If you miss a day, the next unfinished workout still comes next.</p>
+    </section>
+    <div class="option-grid">
+      ${optionButton(
+        'Let Form choose for me',
+        draft.splitMode === 'form',
+        "setOnboardingSplitMode('form')",
+        false,
+        `Recommended: ${recommendation}`
+      )}
+    </div>
+    <div class="focus-section">
+      <h3 class="focus-section-title">Choose my split</h3>
+      <div class="option-grid">
+        ${availableSplits(draft.daysPerWeek).map(name => optionButton(
+          name,
+          draft.splitMode === 'custom' && selectedSplit === name,
+          `chooseOnboardingSplit('${escapeJs(name)}')`,
+          false,
+          splitDescription(name)
+        )).join('')}
+      </div>
+    </div>`;
+}
+
+function questionLayout(title, copy, body) {
+  return `
+    <section class="hero">
+      <h2 class="question-title">${title}</h2>
+      <p class="question-copy">${copy}</p>
+    </section>
+    <div class="option-grid">${body}</div>`;
+}
+
+function optionList(values, selected, handlerTemplate, descriptions = {}) {
+  return values.map(value => optionButton(
+    value,
+    selected === value,
+    handlerTemplate.replace('VALUE', `'${escapeJs(value)}'`),
+    false,
+    descriptions[value] || ''
+  )).join('');
+}
+
+function optionButton(label, selected, onclick, compact = false, description = '') {
+  return `<button class="option ${compact ? 'compact' : ''} ${selected ? 'selected' : ''}" aria-pressed="${selected}" onclick="${onclick}">
+    <span>${label}${description ? `<small>${description}</small>` : ''}</span>
+    <span class="check">✓</span>
+  </button>`;
+}
+
+function chipButton(label, selected, onclick) {
+  return `<button class="chip ${selected ? 'selected' : ''}" aria-pressed="${selected}" onclick="${onclick}">${label}</button>`;
+}
+
+function onboardingCanContinue(key, draft) {
+  if (key === 'name') return draft.firstName.trim().length > 0;
+  if (key === 'equipment') return Boolean(draft.setup);
+  if (key === 'plan') return Boolean(draft.splitMode);
+  return true;
+}
+
+function setOnboardingField(key, value) {
+  state.onboarding.draft[key] = value;
+  if (key !== 'firstName' && key !== 'dislikes') renderOnboarding();
+  if (key === 'firstName') {
+    const button = document.querySelector('.builder-actions .primary-button');
+    if (button) button.disabled = !value.trim();
+  }
+}
+
+function setOnboardingNumber(key, value) {
+  state.onboarding.draft[key] = Number(value);
+  if (key === 'daysPerWeek' && state.onboarding.draft.splitMode === 'form') {
+    state.onboarding.draft.splitName = recommendSplit(state.onboarding.draft);
+  }
+  renderOnboarding();
+}
+
+function setOnboardingSetup(value) {
+  state.onboarding.draft.setup = value;
+  state.onboarding.draft.equipment = [...setupPresets[value].equipment];
+  renderOnboarding();
+}
+
+function toggleOnboardingArray(key, value, supportsNone = false) {
+  let array = [...state.onboarding.draft[key]];
+  if (supportsNone) {
+    if (value === 'None') {
+      array = ['None'];
+    } else {
+      array = array.filter(item => item !== 'None');
+      array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
+      if (!array.length) array = ['None'];
+    }
+  } else {
+    array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
+  }
+  state.onboarding.draft[key] = array;
+  renderOnboarding();
+}
+
+function toggleOnboardingPriority(value) {
+  const priorities = [...state.onboarding.draft.musclePriorities];
+  if (priorities.includes(value)) {
+    state.onboarding.draft.musclePriorities = priorities.filter(item => item !== value);
+  } else if (priorities.length < 3) {
+    state.onboarding.draft.musclePriorities = [...priorities, value];
+  }
+  renderOnboarding();
+}
+
+function setOnboardingSplitMode(mode) {
+  state.onboarding.draft.splitMode = mode;
+  if (mode === 'form') state.onboarding.draft.splitName = recommendSplit(state.onboarding.draft);
+  renderOnboarding();
+}
+
+function chooseOnboardingSplit(name) {
+  state.onboarding.draft.splitMode = 'custom';
+  state.onboarding.draft.splitName = name;
+  renderOnboarding();
+}
+
+function onboardingBack() {
+  if (state.onboarding.step > 0) {
+    state.onboarding.step -= 1;
+    renderOnboarding();
+  }
+}
+
+function onboardingNext() {
+  const key = onboardingSteps[state.onboarding.step];
+  if (!onboardingCanContinue(key, state.onboarding.draft)) return;
+
+  if (state.onboarding.step < onboardingSteps.length - 1) {
+    state.onboarding.step += 1;
+    renderOnboarding();
+    return;
+  }
+
+  const profile = normalizeProfile(state.onboarding.draft);
+  profile.onboarded = true;
+  profile.firstName = profile.firstName.trim();
+  profile.splitName = profile.splitMode === 'form' ? recommendSplit(profile) : profile.splitName;
+  profile.splitSequence = clone(splitDefinitions[profile.splitName]);
+  profile.splitIndex = 0;
+  profile.updatedAt = new Date().toISOString();
+  state.profile = profile;
+  safeSave(STORAGE.profile, profile);
+  state.onboarding.draft = null;
+  renderHome();
+}
+
+function availableSplits(days) {
+  if (days <= 2) return ['Full Body', 'Upper / Lower', 'Strength-focused'];
+  if (days === 3) return ['Full Body', 'Upper / Lower / Full Body', 'Push / Pull / Legs', 'Glute-focused', 'Strength-focused'];
+  if (days === 4) return ['Upper / Lower', 'Glute-focused', 'Traditional body-part split', 'Strength-focused'];
+  if (days === 5) return ['Upper / Lower / Push / Pull / Legs', 'Glute-focused', 'Traditional body-part split'];
+  return ['Push / Pull / Legs repeated', 'Upper / Lower / Push / Pull / Legs', 'Glute-focused'];
+}
+
+function recommendSplit(profile) {
+  const days = Number(profile.daysPerWeek) || 3;
+  if (profile.musclePriorities?.includes('Glutes') && days >= 3) return 'Glute-focused';
+  if (profile.goal === 'Get stronger' && days <= 4) return 'Strength-focused';
+  if (days <= 2) return 'Full Body';
+  if (days === 3) return 'Upper / Lower / Full Body';
+  if (days === 4) return 'Upper / Lower';
+  if (days === 5) return 'Upper / Lower / Push / Pull / Legs';
+  return 'Push / Pull / Legs repeated';
+}
+
+function splitDescription(name) {
+  const descriptions = {
+    'Full Body': 'Train the whole body each session',
+    'Upper / Lower': 'Alternate upper-body and lower-body sessions',
+    'Push / Pull / Legs': 'Push: chest, shoulders and triceps · Pull: back and biceps',
+    'Push / Pull / Legs repeated': 'A repeating six-workout push, pull and legs sequence',
+    'Upper / Lower / Full Body': 'Upper, lower, then one full-body session',
+    'Upper / Lower / Push / Pull / Legs': 'Five distinct sessions with balanced coverage',
+    'Glute-focused': 'Two lower-body sessions with extra glute emphasis',
+    'Strength-focused': 'Three full-body strength sessions',
+    'Traditional body-part split': 'One main body-area focus per session'
+  };
+  return descriptions[name] || '';
+}
+
+function greetingForNow() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function getNextPlanStep() {
+  const sequence = state.profile.splitSequence?.length
+    ? state.profile.splitSequence
+    : clone(splitDefinitions[recommendSplit(state.profile)]);
+  const index = state.profile.splitIndex % sequence.length;
+  return { ...sequence[index], index };
 }
 
 function renderHome() {
   stopUiTimer();
   state.view = 'home';
+
   const total = state.history.length;
   const streak = calculateStreak();
-  const totalMinutes = state.history.reduce((sum, item) => sum + (item.minutes || 0), 0);
-  const currentLabel = state.session.active ? 'Continue workout' : 'Open workout';
+  const totalMinutes = state.history.reduce((sum, item) => sum + (Number(item.minutes) || 0), 0);
+  const greeting = `${greetingForNow()}, ${escapeHtml(state.profile.firstName || 'there')}.`;
+  const planStep = getNextPlanStep();
+  const adjustedTime = state.quickAdjustment?.time || state.profile.duration;
+  const estimate = estimateExerciseCount(adjustedTime, resolveFocuses(planStep.focuses));
+  const currentCard = state.workout ? renderCurrentWorkoutCard() : '';
 
   app.innerHTML = `
     <div class="topbar">
       <div class="brand">FORM</div>
-      <button class="icon-button" aria-label="Settings" onclick="showSettings()">···</button>
+      <button class="icon-button" aria-label="Open menu" onclick="showMenu()">···</button>
     </div>
-    <section class="hero">
-      <div class="eyebrow">Your workout, simplified</div>
-      <h1>What feels good today?</h1>
-      <p class="lede">Choose what you want to train. Form handles the exercises, sets, reps, and pacing.</p>
+    <section class="hero home-hero">
+      <div class="eyebrow">${greeting}</div>
+      <h1>${state.workout ? 'Ready when you are.' : 'Today’s workout'}</h1>
     </section>
-    <section class="card">
-      <button class="primary-button" onclick="startBuilder()">Build my workout</button>
-      <div class="quick-stats">
-        <div class="stat"><strong>${total}</strong><span>workouts</span></div>
-        <div class="stat"><strong>${streak}</strong><span>day streak</span></div>
-        <div class="stat"><strong>${totalMinutes}</strong><span>minutes</span></div>
-      </div>
-    </section>
-    ${state.workout ? `
-      <section class="card">
-        <div class="eyebrow">${state.session.active ? 'In progress' : 'Ready when you are'}</div>
-        <h2 style="margin:0 0 8px;font-size:27px;letter-spacing:-.045em">${state.workout.title}</h2>
-        <p class="question-copy">${state.workout.exercises.length} movements · ${state.answers.time} min</p>
-        <button class="secondary-button" onclick="${state.session.active ? 'resumeWorkout()' : 'showWorkout()'}">${currentLabel}</button>
-      </section>` : ''}
+    ${currentCard || `
+      <section class="card today-card">
+        <div class="eyebrow">${escapeHtml(state.profile.splitName)}</div>
+        <h2 class="today-title">${escapeHtml(planStep.title)}</h2>
+        <p class="today-meta">${adjustedTime} min · about ${estimate} exercises</p>
+        <button class="primary-button" onclick="startPlanWorkout()">Start workout</button>
+        <button class="text-button centered" onclick="openAdjustment('home')">${state.quickAdjustment ? 'Edit adjustment' : 'Adjust workout'}</button>
+      </section>
+      <button class="choose-other" onclick="chooseSomethingElse()">Choose something else</button>
+    `}
+    <div class="quick-stats">
+      <div class="stat"><strong>${total}</strong><span>workouts</span></div>
+      <div class="stat"><strong>${streak}</strong><span>day streak</span></div>
+      <div class="stat"><strong>${totalMinutes}</strong><span>minutes</span></div>
+    </div>
     ${nav('home')}`;
+}
+
+function renderCurrentWorkoutCard() {
+  const label = state.session.active ? 'In progress' : 'Ready when you are';
+  const action = state.session.active ? 'resumeWorkout()' : 'showWorkout()';
+  const button = state.session.active ? 'Continue workout' : 'Open workout';
+  return `
+    <section class="card today-card">
+      <div class="eyebrow">${label}</div>
+      <h2 class="today-title">${escapeHtml(state.workout.title)}</h2>
+      <p class="today-meta">${state.workout.exercises.length} exercises · ${state.answers?.time || state.profile.duration} min</p>
+      <button class="primary-button" onclick="${action}">${button}</button>
+      ${state.session.active ? '' : '<button class="text-button centered" onclick="confirmDiscardWorkout()">Choose something else</button>'}
+    </section>`;
+}
+
+function confirmDiscardWorkout() {
+  showModal(
+    'Choose something else?',
+    'The workout currently prepared will be discarded.',
+    `<div class="modal-actions">
+      <button class="primary-button" onclick="closeCurrentModal(); discardCurrentAndChoose()">Choose something else</button>
+      <button class="ghost-button" onclick="closeCurrentModal()">Keep this workout</button>
+    </div>`
+  );
+}
+
+function discardCurrentAndChoose() {
+  state.workout = null;
+  state.answers = null;
+  state.activeIndex = 0;
+  state.session = { active: false, startedAt: null, elapsedMs: 0 };
+  state.restUntil = null;
+  safeRemove(STORAGE.current);
+  chooseSomethingElse();
 }
 
 function calculateStreak() {
@@ -288,113 +949,63 @@ function dateKey(date) {
   return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
 }
 
-function startBuilder() {
-  state.step = 0;
-  state.focusNotice = '';
-  renderBuilder();
+function estimateExerciseCount(minutes, focuses) {
+  if (focuses.length === 1 && focuses[0] === 'Cardio') return minutes <= 25 ? 2 : 3;
+  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 25 ? 4 : 6;
+  return minutes <= 20 ? 3 : minutes <= 30 ? 4 : minutes <= 45 ? 5 : minutes <= 60 ? 6 : 7;
 }
 
-function renderBuilder() {
+function startPlanWorkout() {
+  const step = getNextPlanStep();
+  const adjustment = consumeAdjustment();
+  state.answers = sessionAnswers(step.focuses, 'plan', adjustment);
+  state.answers.planIndex = step.index;
+  state.answers.planTitle = step.title;
+  generateWorkout();
+}
+
+function chooseSomethingElse() {
   stopUiTimer();
-  state.view = 'builder';
-  const step = steps[state.step];
-  const progress = ((state.step + 1) / steps.length) * 100;
+  state.view = 'focus';
+  state.focusNotice = '';
+  state.answers = sessionAnswers([], 'custom', state.quickAdjustment || defaultAdjustment());
+  renderFocusPicker();
+}
 
-  let body = '';
-  if (step.key === 'focuses') {
-    const count = state.answers.focuses.length;
-    body = `
-      <div class="selection-summary">${count ? `${count} selected` : 'Nothing selected yet'}</div>
-      ${focusSections.map(section => `
-        <section class="focus-section">
-          <h3 class="focus-section-title">${section.title}</h3>
-          <div class="option-grid two-column">
-            ${section.options.map(option => focusOption(option)).join('')}
-          </div>
-        </section>`).join('')}
-      ${state.focusNotice ? `<p class="inline-note">${state.focusNotice}</p>` : ''}`;
-  } else if (step.range) {
-    body = `
-      <div class="range-wrap">
-        <div class="range-value"><span id="timeValueBig">${state.answers.time}</span><span>min</span></div>
-        <input aria-label="Workout duration" type="range" min="15" max="75" step="5" value="${state.answers.time}" oninput="updateTime(this.value)" />
-        <div class="range-labels"><span>15</span><span>45</span><span>75</span></div>
-      </div>`;
-  } else if (step.key === 'setup') {
-    body = `<div class="option-grid">${step.options.map(([value, label]) => choiceOption(step.key, value, label)).join('')}</div>`;
-  } else if (step.key === 'limitations') {
-    body = `<div class="option-grid">${step.options.map(option => limitationOption(option)).join('')}</div>
-      <p class="helper">Form removes exercises commonly associated with the areas selected, but it cannot diagnose pain or replace professional guidance.</p>`;
-  } else {
-    body = `<div class="option-grid">${step.options.map(option => choiceOption(step.key, option, option)).join('')}</div>`;
-  }
-
-  const continueDisabled = step.key === 'focuses' && state.answers.focuses.length === 0;
-
+function renderFocusPicker() {
+  const selected = state.answers.focuses || [];
   app.innerHTML = `
-    <div class="step-header">
-      <button class="icon-button" aria-label="Go back" onclick="builderBack()">←</button>
-      <div class="step-meta">
-        <span class="step-count">${state.step + 1} of ${steps.length}</span>
-        <div class="progress-track" aria-label="Builder progress">
-          <div class="progress-fill" style="width:${progress}%"></div>
-        </div>
-      </div>
+    <div class="topbar">
+      <button class="icon-button" aria-label="Back home" onclick="renderHome()">←</button>
+      <div class="brand">FORM</div>
+      <div style="width:44px"></div>
     </div>
     <section class="hero">
-      <h2 class="question-title">${step.title}</h2>
-      <p class="question-copy">${step.copy}</p>
+      <h2 class="question-title">What do you want to train?</h2>
+      <p class="question-copy">Choose one area or combine up to four. Your normal goal, equipment, and preferences are already applied.</p>
     </section>
-    ${body}
+    <div class="selection-summary">${selected.length ? `${selected.length} selected` : 'Nothing selected yet'}</div>
+    ${focusSections.map(section => `
+      <section class="focus-section">
+        <h3 class="focus-section-title">${section.title}</h3>
+        <div class="option-grid two-column">
+          ${section.options.map(option => focusOption(option, selected)).join('')}
+        </div>
+      </section>`).join('')}
+    ${state.focusNotice ? `<p class="inline-note">${state.focusNotice}</p>` : ''}
     <div class="builder-actions">
-      <div class="footer-actions ${state.step === 0 ? 'single' : ''}">
-        ${state.step > 0 ? '<button class="ghost-button" onclick="builderBack()">Back</button>' : ''}
-        <button class="primary-button" ${continueDisabled ? 'disabled' : ''} onclick="builderNext()">${state.step === steps.length - 1 ? 'Create workout' : 'Continue'}</button>
-      </div>
+      <button class="primary-button" ${selected.length ? '' : 'disabled'} onclick="buildCustomWorkout()">Build workout</button>
+      <button class="text-button centered" onclick="openAdjustment('focus')">${adjustmentLabel()}</button>
     </div>`;
 }
 
-function focusOption(option) {
-  const selected = state.answers.focuses.includes(option);
-  return `<button class="option compact ${selected ? 'selected' : ''}" aria-pressed="${selected}" onclick="toggleFocus('${escapeJs(option)}')">
-    <span>${option}</span><span class="check">✓</span>
-  </button>`;
-}
-
-function choiceOption(key, value, label) {
-  const selected = state.answers[key] === value;
-  return `<button class="option ${selected ? 'selected' : ''}" aria-pressed="${selected}" onclick="choose('${key}', '${escapeJs(value)}')">
-    <span>${label}${optionSubtext(value)}</span><span class="check">✓</span>
-  </button>`;
-}
-
-function limitationOption(option) {
-  const selected = state.answers.limitations.includes(option);
-  return `<button class="option ${selected ? 'selected' : ''}" aria-pressed="${selected}" onclick="toggleLimitation('${escapeJs(option)}')">
-    <span>${option}</span><span class="check">✓</span>
-  </button>`;
-}
-
-function optionSubtext(value) {
-  const descriptions = {
-    'Build muscle': 'Moderate reps with progressive overload',
-    'Get stronger': 'Lower reps and longer rest',
-    'Support fat loss': 'Moderate reps with shorter rests',
-    'Maintain': 'Balanced volume and intensity',
-    'General fitness': 'A straightforward, well-rounded session',
-    'Low': 'Reduced volume with no guilt',
-    'Good': 'Balanced and productive',
-    'High': 'A little more challenge'
-  };
-  return descriptions[value] ? `<small>${descriptions[value]}</small>` : '';
-}
-
-function escapeJs(value) {
-  return value.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+function focusOption(option, selected) {
+  const active = selected.includes(option);
+  return optionButton(option, active, `toggleFocus('${escapeJs(option)}')`, true);
 }
 
 function toggleFocus(option) {
-  let selected = [...state.answers.focuses];
+  let selected = [...(state.answers.focuses || [])];
   state.focusNotice = '';
 
   if (selected.includes(option)) {
@@ -405,97 +1016,233 @@ function toggleFocus(option) {
     selected = selected.filter(item => !specialFocuses.includes(item));
     if (selected.length >= 4) {
       state.focusNotice = 'Choose up to four areas so every selection can be represented.';
-      renderBuilder();
+      renderFocusPicker();
       return;
     }
     selected.push(option);
   }
 
   state.answers.focuses = selected;
-  renderBuilder();
+  renderFocusPicker();
 }
 
-function toggleLimitation(option) {
-  let selected = [...state.answers.limitations];
+function buildCustomWorkout() {
+  if (!state.answers.focuses?.length) return;
+  const adjustment = consumeAdjustment();
+  state.answers = sessionAnswers(state.answers.focuses, 'custom', adjustment);
+  generateWorkout();
+}
 
-  if (option === 'None') {
-    selected = ['None'];
+function defaultAdjustment() {
+  return {
+    time: state.profile.duration,
+    intensity: 'Standard',
+    temporaryAvoid: ['None']
+  };
+}
+
+function sessionAnswers(focuses, source, adjustment) {
+  const extraAvoid = adjustment?.temporaryAvoid || ['None'];
+  const limitations = mergeLimitations(state.profile.limitations, extraAvoid);
+  return {
+    focuses: [...focuses],
+    goal: state.profile.goal,
+    time: adjustment?.time || state.profile.duration,
+    equipment: [...state.profile.equipment],
+    limitations,
+    intensity: adjustment?.intensity || 'Standard',
+    experience: state.profile.experience,
+    source
+  };
+}
+
+function mergeLimitations(base, extra) {
+  const merged = [...new Set([
+    ...(base || []).filter(item => item !== 'None'),
+    ...(extra || []).filter(item => item !== 'None')
+  ])];
+  return merged.length ? merged : ['None'];
+}
+
+function openAdjustment(returnTo) {
+  stopUiTimer();
+  state.adjustmentReturn = returnTo;
+  state.quickAdjustment = clone(state.quickAdjustment || defaultAdjustment());
+  renderAdjustment();
+}
+
+function renderAdjustment() {
+  state.view = 'adjust';
+  const adjustment = state.quickAdjustment;
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-button" aria-label="Go back" onclick="cancelAdjustment()">←</button>
+      <div class="brand">FORM</div>
+      <div style="width:44px"></div>
+    </div>
+    <section class="hero">
+      <h2 class="question-title">Adjust workout</h2>
+      <p class="question-copy">Only change what is different today.</p>
+    </section>
+    <section class="card">
+      <div class="field-label">Time available</div>
+      <div class="chip-grid">
+        ${[15, 20, 30, 45, 60, 75].map(value => chipButton(
+          `${value} min`,
+          adjustment.time === value,
+          `setAdjustmentTime(${value})`
+        )).join('')}
+      </div>
+      <div class="field-label field-gap">Difficulty today</div>
+      <div class="chip-grid three">
+        ${['Easier', 'Standard', 'Harder'].map(value => chipButton(
+          value,
+          adjustment.intensity === value,
+          `setAdjustmentIntensity('${value}')`
+        )).join('')}
+      </div>
+    </section>
+    <section class="card">
+      <div class="field-label">Avoid today</div>
+      <p class="helper" style="margin-top:0">Temporary selections apply only to the next workout.</p>
+      <div class="option-grid">
+        ${limitationChoices.map(value => optionButton(
+          value,
+          adjustment.temporaryAvoid.includes(value),
+          `toggleAdjustmentAvoid('${escapeJs(value)}')`,
+          true
+        )).join('')}
+      </div>
+    </section>
+    <div class="builder-actions">
+      <button class="primary-button" onclick="saveAdjustment()">Save adjustment</button>
+      <button class="text-button centered" onclick="resetAdjustment()">Reset to normal</button>
+    </div>`;
+}
+
+function setAdjustmentTime(value) {
+  state.quickAdjustment.time = Number(value);
+  renderAdjustment();
+}
+
+function setAdjustmentIntensity(value) {
+  state.quickAdjustment.intensity = value;
+  renderAdjustment();
+}
+
+function toggleAdjustmentAvoid(value) {
+  let array = [...state.quickAdjustment.temporaryAvoid];
+  if (value === 'None') {
+    array = ['None'];
   } else {
-    selected = selected.filter(item => item !== 'None');
-    if (selected.includes(option)) {
-      selected = selected.filter(item => item !== option);
-    } else {
-      selected.push(option);
-    }
-    if (!selected.length) selected = ['None'];
+    array = array.filter(item => item !== 'None');
+    array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
+    if (!array.length) array = ['None'];
   }
-
-  state.answers.limitations = selected;
-  renderBuilder();
+  state.quickAdjustment.temporaryAvoid = array;
+  renderAdjustment();
 }
 
-function choose(key, value) {
-  state.answers[key] = value;
-  renderBuilder();
+function saveAdjustment() {
+  if (state.adjustmentReturn === 'focus') renderFocusPicker();
+  else renderHome();
 }
 
-function updateTime(value) {
-  state.answers.time = Number(value);
-  const display = document.getElementById('timeValueBig');
-  if (display) display.textContent = value;
+function cancelAdjustment() {
+  if (state.adjustmentReturn === 'focus') renderFocusPicker();
+  else renderHome();
 }
 
-function builderBack() {
-  if (state.step === 0) {
-    renderHome();
-  } else {
-    state.step -= 1;
-    renderBuilder();
+function resetAdjustment() {
+  state.quickAdjustment = null;
+  if (state.adjustmentReturn === 'focus') renderFocusPicker();
+  else renderHome();
+}
+
+function adjustmentLabel() {
+  const adjustment = state.quickAdjustment;
+  if (!adjustment) return `Adjust workout · ${state.profile.duration} min`;
+  const parts = [`${adjustment.time} min`];
+  if (adjustment.intensity !== 'Standard') parts.push(adjustment.intensity);
+  if (!adjustment.temporaryAvoid.includes('None')) parts.push('temporary caution');
+  return `Adjusted · ${parts.join(' · ')}`;
+}
+
+function consumeAdjustment() {
+  const adjustment = clone(state.quickAdjustment || defaultAdjustment());
+  state.quickAdjustment = null;
+  return adjustment;
+}
+
+function resolveFocuses(selected) {
+  if (selected.includes('Full body')) {
+    return ['Legs', 'Chest', 'Back', 'Glutes', 'Core', 'Shoulders'];
   }
+  if (selected.includes('Upper body')) {
+    return ['Back', 'Chest', 'Shoulders', 'Arms'];
+  }
+  if (selected.includes('Pick for me')) {
+    return pickFocusesFromHistory();
+  }
+  return [...selected];
 }
 
-function builderNext() {
-  if (steps[state.step].key === 'focuses' && state.answers.focuses.length === 0) return;
-  if (state.step < steps.length - 1) {
-    state.step += 1;
-    renderBuilder();
-  } else {
-    generateWorkout();
-  }
+function pickFocusesFromHistory() {
+  const pool = ['Glutes', 'Legs', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core'];
+  const counts = Object.fromEntries(pool.map(focus => [focus, 0]));
+  state.history.slice(0, 5).forEach((workout, index) => {
+    const weight = 5 - index;
+    (workout.focuses || []).forEach(focus => {
+      if (counts[focus] !== undefined) counts[focus] += weight;
+    });
+  });
+  state.profile.musclePriorities.forEach(focus => {
+    if (counts[focus] !== undefined) counts[focus] -= 2;
+  });
+  const ranked = pool.sort((a, b) => counts[a] - counts[b]);
+  return ranked.slice(0, state.answers.time <= 25 ? 2 : 3);
 }
 
 function generateWorkout() {
   const resolvedFocuses = resolveFocuses(state.answers.focuses);
-  const eligible = exerciseLibrary.filter(isEligible);
+  const eligible = exerciseLibrary.filter(item => isEligible(item, state.answers));
   const desiredCount = getExerciseCount(state.answers.time, resolvedFocuses);
   const selectedExercises = balancedPick(eligible, resolvedFocuses, desiredCount);
 
   if (!selectedExercises.length) {
     showModal(
-      'No safe match found',
-      'The selected equipment and caution areas removed every available exercise for this combination. Go back and change the setup, selected areas, or caution areas.',
-      '<button class="primary-button" onclick="closeCurrentModal(); startBuilder()">Edit choices</button>'
+      'No matching workout found',
+      'The current equipment, caution areas, and exercise preferences removed every available option for this combination.',
+      `<div class="modal-actions">
+        <button class="primary-button" onclick="closeCurrentModal(); chooseSomethingElse()">Choose another focus</button>
+        <button class="ghost-button" onclick="closeCurrentModal(); showEquipmentSettings()">Review equipment</button>
+      </div>`
     );
     return;
   }
 
-  const prescription = getBasePrescription(state.answers.goal, state.answers.energy);
+  const prescription = getBasePrescription();
   const exercises = selectedExercises.map((item, index) => prescribeExercise(item, prescription, index));
   const limitationNote = buildLimitationNote();
-  const goalNote = state.answers.goal === 'Support fat loss'
-    ? 'This session supports calorie expenditure and fitness. Fat loss still depends on overall activity and nutrition, and it cannot be targeted to one body area.'
+  const goalNote = state.answers.goal === 'Lose fat / get leaner'
+    ? 'This workout supports fitness and energy expenditure. Fat loss cannot be targeted to one body area.'
     : '';
 
   state.workout = {
     id: `workout-${Date.now()}`,
-    title: workoutTitle(state.answers.focuses),
-    note: `${state.answers.goal} · ${setups[state.answers.setup].label}`,
+    title: state.answers.planTitle || workoutTitle(state.answers.focuses),
+    note: `${state.answers.goal} · ${equipmentSummary(state.answers.equipment)}`,
     focuses: [...state.answers.focuses],
     resolvedFocuses,
-    warmup: state.answers.time <= 20 ? 3 : state.answers.time <= 35 ? 4 : (state.answers.energy === 'Low' ? 4 : 6),
+    source: state.answers.source,
+    planIndex: state.answers.planIndex,
+    warmup: state.answers.time <= 20 ? 3 : state.answers.time <= 35 ? 4 : 6,
     cooldown: resolvedFocuses.includes('Mobility + recovery') ? 5 : (state.answers.time <= 20 ? 2 : 3),
     guidance: [goalNote, limitationNote, buildTimeNote(resolvedFocuses)].filter(Boolean),
-    exercises
+    exercises,
+    swaps: [],
+    skipped: [],
+    rejectedFamilies: []
   };
 
   state.activeIndex = 0;
@@ -505,46 +1252,61 @@ function generateWorkout() {
   showWorkout();
 }
 
-function resolveFocuses(selected) {
-  if (selected.includes('Full body')) {
-    return ['Legs', 'Chest', 'Back', 'Glutes', 'Core', 'Shoulders'];
-  }
-  if (selected.includes('Surprise me')) {
-    const pool = ['Glutes', 'Legs', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core', 'Cardio'];
-    return shuffle(pool).slice(0, state.answers.time <= 25 ? 2 : 3);
-  }
-  return [...selected];
+function equipmentSummary(equipment) {
+  const matchingPreset = Object.entries(setupPresets)
+    .find(([key, preset]) => key !== 'custom' && arraysEqualSets(preset.equipment, equipment));
+  return matchingPreset ? matchingPreset[1].label : 'Custom equipment';
 }
 
-function isEligible(item) {
-  const allowedEquipment = setups[state.answers.setup].allowed;
-  if (!allowedEquipment.includes(item.equipment)) return false;
+function arraysEqualSets(a, b) {
+  const first = [...new Set(a)].sort();
+  const second = [...new Set(b)].sort();
+  return first.length === second.length && first.every((value, index) => value === second[index]);
+}
 
-  const limitations = state.answers.limitations
-    .filter(item => item !== 'None')
-    .map(item => item.toLowerCase());
+function isEligible(item, answers) {
+  if (!item.requires.every(required => answers.equipment.includes(required))) return false;
 
-  return !item.avoid.some(area => limitations.includes(area));
+  const limitations = answers.limitations
+    .filter(value => value !== 'None')
+    .map(value => value.toLowerCase());
+
+  if (item.avoid.some(area => limitations.includes(area))) return false;
+
+  if (answers.experience === 'Beginner' && item.difficulty === 'advanced') return false;
+
+  const dislikes = String(state.profile.dislikes || '')
+    .split(',')
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (dislikes.some(dislike =>
+    item.name.toLowerCase().includes(dislike) ||
+    item.family.toLowerCase().includes(dislike) ||
+    item.pattern.toLowerCase().includes(dislike)
+  )) return false;
+
+  return true;
 }
 
 function getExerciseCount(minutes, focuses) {
   if (focuses.length === 1 && focuses[0] === 'Cardio') return minutes <= 25 ? 2 : 3;
   if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 25 ? 4 : 6;
 
-  let count = minutes <= 20 ? 3 : minutes <= 30 ? 4 : minutes <= 45 ? 5 : minutes <= 60 ? 6 : 7;
+  let count = estimateExerciseCount(minutes, focuses);
   count = Math.max(count, Math.min(focuses.length, 4));
 
   const singleFocus = state.answers.focuses.length === 1 ? state.answers.focuses[0] : '';
   if (['Calves', 'Arms'].includes(singleFocus)) count = Math.min(count, 4);
 
-  if (state.answers.energy === 'Low') count = Math.max(Math.min(focuses.length, 4), count - 1);
-  if (state.answers.energy === 'High' && minutes >= 40) count += 1;
+  if (state.answers.intensity === 'Easier') count = Math.max(Math.min(focuses.length, 4), count - 1);
+  if (state.answers.intensity === 'Harder' && minutes >= 40) count += 1;
   return Math.min(count, 8);
 }
 
 function buildTimeNote(resolvedFocuses) {
   if (state.answers.time <= 20 && resolvedFocuses.length >= 3) {
-    return 'Because several areas were selected in a short time window, this is a brief circuit with fewer working sets per movement.';
+    return 'Form kept the highest-value movements and reduced working sets to fit the shorter session.';
   }
   return '';
 }
@@ -561,7 +1323,7 @@ const compoundExerciseIds = new Set([
 function rankedForFocus(items, focus) {
   return items
     .filter(item => item.focuses.includes(focus))
-    .map(item => ({ item, score: exercisePriority(item, focus) + Math.random() * 0.2 }))
+    .map(item => ({ item, score: exercisePriority(item, focus) + Math.random() * 0.15 }))
     .sort((a, b) => b.score - a.score)
     .map(entry => entry.item);
 }
@@ -589,9 +1351,9 @@ function balancedPick(eligible, focuses, desiredCount) {
 
   if (selected.length < desiredCount) {
     const focusSet = new Set(focuses);
-    const remaining = shuffle(eligible.filter(item =>
-      !used.has(item.id) && item.focuses.some(focus => focusSet.has(focus))
-    ));
+    const remaining = eligible
+      .filter(item => !used.has(item.id) && item.focuses.some(focus => focusSet.has(focus)))
+      .sort((a, b) => exercisePriority(b, focuses[0]) - exercisePriority(a, focuses[0]));
     for (const item of remaining) {
       selected.push(item);
       used.add(item.id);
@@ -607,32 +1369,47 @@ function exercisePriority(item, focus) {
   if (item.focuses[0] === focus) score += 3;
   if (item.kind === 'strength') score += 2;
   if (compoundExerciseIds.has(item.id)) score += 4;
-  if (item.equipment === 'bodyweight') score += 0.25;
+  if (state.profile.musclePriorities.some(priority => item.focuses.includes(priority))) score += 1.25;
+  if (recentExerciseIds().has(item.id)) score -= 1.25;
+  score -= (state.behavior.exerciseRejects[item.id] || 0) * 1.5;
+  score -= (state.behavior.familyRejects[item.family] || 0) * 0.4;
+  score -= (state.behavior.exerciseSkips[item.id] || 0) * 0.8;
   return score;
 }
 
-function getBasePrescription(goal, energy) {
+function recentExerciseIds() {
+  const ids = new Set();
+  state.history.slice(0, 3).forEach(workout => {
+    (workout.details || []).forEach(detail => {
+      if (detail.id) ids.add(detail.id);
+    });
+  });
+  return ids;
+}
+
+function getBasePrescription() {
   const base = {
+    'Lose fat / get leaner': { sets: 3, reps: '10–15', rest: 45 },
     'Build muscle': { sets: 3, reps: '8–12', rest: 75 },
-    'Get stronger': { sets: 4, reps: '5–8', rest: 120 },
-    'Support fat loss': { sets: 3, reps: '10–15', rest: 45 },
     'Maintain': { sets: 3, reps: '8–12', rest: 60 },
+    'Get stronger': { sets: 4, reps: '5–8', rest: 120 },
     'General fitness': { sets: 3, reps: '8–12', rest: 60 }
-  }[goal];
+  }[state.answers.goal];
+
+  const result = { ...base };
 
   if (state.answers.time <= 20) {
-    const manyFocuses = state.answers.focuses.length >= 3;
-    return {
-      ...base,
-      sets: manyFocuses ? 1 : 2,
-      rest: Math.min(base.rest, goal === 'Get stronger' ? 90 : 60)
-    };
+    result.sets = state.answers.focuses.length >= 3 ? 1 : 2;
+    result.rest = Math.min(result.rest, state.answers.goal === 'Get stronger' ? 90 : 60);
+  } else if (state.answers.time <= 30) {
+    result.sets = Math.min(result.sets, 3);
   }
-  if (state.answers.time <= 30) {
-    base.sets = Math.min(base.sets, 3);
-  }
-  if (energy === 'Low') return { ...base, sets: Math.max(2, base.sets - 1) };
-  return base;
+
+  if (state.answers.experience === 'Beginner') result.sets = Math.min(result.sets, 3);
+  if (state.answers.intensity === 'Easier') result.sets = Math.max(1, result.sets - 1);
+  if (state.answers.intensity === 'Harder' && state.answers.time >= 40) result.sets += 1;
+
+  return result;
 }
 
 function prescribeExercise(item, base, index) {
@@ -650,32 +1427,111 @@ function prescribeExercise(item, base, index) {
     rest = 30;
   } else if (item.kind === 'time') {
     reps = state.answers.goal === 'Get stronger' ? '30–45 sec' : '25–40 sec';
-  } else if (state.answers.energy === 'High' && index === 0 && state.answers.time >= 40) {
-    sets += 1;
+  } else if (index > 2 && state.answers.time <= 30) {
+    sets = Math.max(2, sets - 1);
   }
+
+  const performance = getPreviousPerformance(item, reps);
+  const prefillWeight = performance?.recommendedWeight ?? performance?.lastWeight ?? '';
 
   return {
     ...item,
     sets,
     reps,
     rest,
-    setData: Array.from({ length: sets }, () => ({ weight: '', reps: '', done: false }))
+    previousPerformance: performance?.summary || '',
+    recommendedWeight: performance?.recommendedWeight || '',
+    setData: Array.from({ length: sets }, () => ({
+      weight: item.kind === 'strength' ? String(prefillWeight || '') : '',
+      reps: '',
+      done: false
+    }))
   };
+}
+
+function getPreviousPerformance(item, currentRepRange) {
+  const record = findLastExerciseRecord(item.id, item.name);
+  if (!record) return null;
+
+  const completed = (record.detail.sets || []).filter(set => set.done);
+  if (!completed.length) return null;
+
+  const weighted = completed.filter(set => Number(set.weight) > 0);
+  const lastWeighted = weighted.at(-1);
+  const repValues = completed.map(set => Number(set.reps)).filter(Number.isFinite);
+  const bestReps = repValues.length ? Math.max(...repValues) : null;
+  const lastWeight = lastWeighted ? Number(lastWeighted.weight) : null;
+
+  let summary = '';
+  if (lastWeight && bestReps) summary = `${formatNumber(lastWeight)} lb × ${bestReps}`;
+  else if (bestReps) summary = `${bestReps} reps`;
+  else if (lastWeight) summary = `${formatNumber(lastWeight)} lb`;
+
+  let recommendedWeight = null;
+  const upper = repRangeUpper(currentRepRange);
+  const allAtTop = upper && completed.length && completed.every(set => Number(set.reps) >= upper);
+  const hardLastTime = record.workout.feedback === 'Too hard';
+
+  if (lastWeight && allAtTop && !hardLastTime) {
+    const increment = progressionIncrement(item);
+    recommendedWeight = roundToIncrement(lastWeight + increment, increment);
+  }
+
+  return {
+    summary,
+    lastWeight,
+    bestReps,
+    recommendedWeight
+  };
+}
+
+function findLastExerciseRecord(id, name) {
+  for (const workout of state.history) {
+    const detail = (workout.details || []).find(item =>
+      (id && item.id === id) || (!item.id && item.name === name)
+    );
+    if (detail) return { workout, detail };
+  }
+  return null;
+}
+
+function repRangeUpper(value) {
+  const numbers = String(value).match(/\d+/g);
+  return numbers?.length ? Number(numbers.at(-1)) : null;
+}
+
+function progressionIncrement(item) {
+  if (
+    item.role === 'accessory' ||
+    ['shoulder-accessory', 'elbow-flexion', 'elbow-extension', 'calf-raise'].includes(item.family)
+  ) {
+    return 2.5;
+  }
+  return 5;
+}
+
+function roundToIncrement(value, increment) {
+  return Math.round(value / increment) * increment;
+}
+
+function formatNumber(value) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(1)));
 }
 
 function buildLimitationNote() {
   const limits = state.answers.limitations.filter(item => item !== 'None');
   if (!limits.length) return '';
-  return `Exercises commonly associated with ${formatList(limits).toLowerCase()} were removed. Stop if any movement causes pain.`;
+  return `Exercises tagged for ${formatList(limits).toLowerCase()} were removed. Stop if any movement causes pain.`;
 }
 
 function workoutTitle(selected) {
-  if (selected.includes('Full body')) return 'Full-body session';
-  if (selected.includes('Surprise me')) return 'Today’s mix';
+  if (selected.includes('Full body')) return 'Full Body';
+  if (selected.includes('Upper body')) return 'Upper Body';
+  if (selected.includes('Pick for me')) return 'Today’s Mix';
   if (selected.length === 1) {
     const single = selected[0];
-    if (single === 'Mobility + recovery') return 'Mobility + recovery';
-    return `${single} focus`;
+    if (single === 'Mobility + recovery') return 'Mobility + Recovery';
+    return `${single} Focus`;
   }
   return formatList(selected);
 }
@@ -684,15 +1540,6 @@ function formatList(items) {
   if (items.length <= 1) return items[0] || '';
   if (items.length === 2) return `${items[0]} + ${items[1]}`;
   return `${items.slice(0, -1).join(', ')} + ${items.at(-1)}`;
-}
-
-function shuffle(items) {
-  const copy = [...items];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
 }
 
 function showWorkout() {
@@ -715,8 +1562,8 @@ function showWorkout() {
     <section class="workout-head">
       <div>
         <div class="eyebrow">Today</div>
-        <h2>${workout.title}</h2>
-        <div class="workout-meta">${workout.note} · ${state.answers.time} min</div>
+        <h2>${escapeHtml(workout.title)}</h2>
+        <div class="workout-meta">${escapeHtml(workout.note)} · ${state.answers.time} min</div>
       </div>
       <div class="badge">${workout.exercises.length} moves</div>
     </section>
@@ -724,7 +1571,7 @@ function showWorkout() {
       <section class="card" style="margin-bottom:14px">
         <div class="plan-note">
           <div class="plan-note-icon">i</div>
-          <p class="helper" style="margin:2px 0 0">${note}</p>
+          <p class="helper" style="margin:2px 0 0">${escapeHtml(note)}</p>
         </div>
       </section>`).join('')}
     <section class="card" style="margin-bottom:14px">
@@ -748,9 +1595,11 @@ function exercisePreview(item, index) {
   const swapAvailable = findSwap(index);
   return `<article class="exercise-card">
     <div class="exercise-main">
-      <div class="exercise-number">${String(index + 1).padStart(2, '0')} · ${item.muscle}</div>
-      <div class="exercise-name">${item.name}</div>
-      <div class="exercise-prescription">${item.sets} ${item.sets === 1 ? 'set' : 'sets'} · ${item.reps} · ${item.rest}s rest</div>
+      <div class="exercise-number">${String(index + 1).padStart(2, '0')} · ${escapeHtml(item.muscle)}</div>
+      <div class="exercise-name">${escapeHtml(item.name)}</div>
+      <div class="exercise-prescription">${item.sets} ${item.sets === 1 ? 'set' : 'sets'} · ${escapeHtml(item.reps)} · ${item.rest}s rest</div>
+      ${item.previousPerformance ? `<div class="previous-line">Last time: ${escapeHtml(item.previousPerformance)}</div>` : ''}
+      ${item.recommendedWeight ? `<div class="suggestion-line">Try ${escapeHtml(formatNumber(Number(item.recommendedWeight)))} lb today</div>` : ''}
     </div>
     <div class="exercise-actions">
       <button class="pill-button" onclick="showTip(${index})">How to</button>
@@ -763,30 +1612,71 @@ function findSwap(index) {
   if (!state.workout) return null;
   const current = state.workout.exercises[index];
   const usedIds = new Set(state.workout.exercises.map(item => item.id));
-  const candidates = exerciseLibrary.filter(item =>
-    item.id !== current.id &&
-    !usedIds.has(item.id) &&
-    item.focuses.some(focus => current.focuses.includes(focus)) &&
-    isEligible(item) &&
-    item.kind === current.kind
-  );
-  return candidates[0] || null;
+  const rejectedFamilies = new Set(state.workout.rejectedFamilies || []);
+
+  const candidates = exerciseLibrary
+    .filter(item =>
+      item.id !== current.id &&
+      !usedIds.has(item.id) &&
+      item.kind === current.kind &&
+      item.family !== current.family &&
+      !rejectedFamilies.has(item.family) &&
+      item.focuses.some(focus => current.focuses.includes(focus)) &&
+      isEligible(item, state.answers)
+    )
+    .map(item => {
+      let score = 0;
+      if (item.focuses[0] === current.focuses[0]) score += 4;
+      if (item.role === current.role) score += 2;
+      if (item.muscle === current.muscle) score += 2;
+      score -= (state.behavior.exerciseRejects[item.id] || 0) * 2;
+      score -= (state.behavior.familyRejects[item.family] || 0);
+      return { item, score };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  return candidates[0]?.item || null;
 }
 
 function replacementWithSamePrescription(replacement, current) {
+  const performance = getPreviousPerformance(replacement, current.reps);
+  const prefillWeight = performance?.recommendedWeight ?? performance?.lastWeight ?? '';
   return {
     ...replacement,
     sets: current.sets,
     reps: current.reps,
     rest: current.rest,
-    setData: Array.from({ length: current.sets }, () => ({ weight: '', reps: '', done: false }))
+    previousPerformance: performance?.summary || '',
+    recommendedWeight: performance?.recommendedWeight || '',
+    setData: Array.from({ length: current.sets }, () => ({
+      weight: replacement.kind === 'strength' ? String(prefillWeight || '') : '',
+      reps: '',
+      done: false
+    }))
   };
+}
+
+function recordSwap(current, replacement) {
+  state.workout.rejectedFamilies = [...new Set([...(state.workout.rejectedFamilies || []), current.family])];
+  state.workout.swaps.push({
+    fromId: current.id,
+    from: current.name,
+    fromFamily: current.family,
+    toId: replacement.id,
+    to: replacement.name,
+    toFamily: replacement.family,
+    at: new Date().toISOString()
+  });
+  state.behavior.exerciseRejects[current.id] = (state.behavior.exerciseRejects[current.id] || 0) + 1;
+  state.behavior.familyRejects[current.family] = (state.behavior.familyRejects[current.family] || 0) + 1;
+  safeSave(STORAGE.behavior, state.behavior);
 }
 
 function swapExercise(index) {
   const replacement = findSwap(index);
   if (!replacement) return;
   const current = state.workout.exercises[index];
+  recordSwap(current, replacement);
   state.workout.exercises[index] = replacementWithSamePrescription(replacement, current);
   persistCurrent();
   showWorkout();
@@ -794,13 +1684,27 @@ function swapExercise(index) {
 
 function showTip(index) {
   const item = state.workout.exercises[index];
-  showModal(item.name, item.cue);
+  const cues = cueSteps(item.cue);
+  showModal(
+    item.name,
+    '',
+    `<ol class="cue-list">${cues.map(cue => `<li>${escapeHtml(cue)}</li>`).join('')}</ol>
+     <div class="modal-actions">
+       <button class="primary-button" onclick="closeCurrentModal()">Done</button>
+     </div>`
+  );
+}
+
+function cueSteps(cue) {
+  const clean = String(cue).replace(/\.$/, '');
+  const parts = clean.split(/,\s+|\s+and\s+/i).map(part => part.trim()).filter(Boolean);
+  return parts.slice(0, 3).map(part => part.charAt(0).toUpperCase() + part.slice(1));
 }
 
 function confirmRegenerate() {
   const message = state.session.active
     ? 'Creating a new workout will discard the workout currently in progress.'
-    : 'Create a different workout using the same choices?';
+    : 'Create another workout using the same focus and preferences?';
   showModal(
     'Create another workout?',
     message,
@@ -842,6 +1746,10 @@ function renderActive() {
 
   state.view = 'active';
   const item = state.workout.exercises[state.activeIndex];
+  const completedCount = item.setData.filter(set => set.done).length;
+  const advanceLabel = completedCount
+    ? (state.activeIndex === state.workout.exercises.length - 1 ? 'Finish workout' : 'Next exercise')
+    : (state.activeIndex === state.workout.exercises.length - 1 ? 'Finish and skip' : 'Skip exercise');
 
   app.innerHTML = `
     <div class="topbar">
@@ -858,21 +1766,23 @@ function renderActive() {
       <div class="active-top">
         <div>
           <div class="eyebrow">Exercise ${state.activeIndex + 1} of ${state.workout.exercises.length}</div>
-          <h2>${item.name}</h2>
-          <p class="workout-meta">${item.reps} · ${item.rest}s rest</p>
+          <h2>${escapeHtml(item.name)}</h2>
+          <p class="workout-meta">${escapeHtml(item.reps)} · ${item.rest}s rest</p>
         </div>
       </div>
-      <p class="helper">${item.cue}</p>
+      ${item.previousPerformance ? `<div class="previous-line">Last time: ${escapeHtml(item.previousPerformance)}</div>` : ''}
+      ${item.recommendedWeight ? `<div class="suggestion-line">Suggested today: ${escapeHtml(formatNumber(Number(item.recommendedWeight)))} lb</div>` : ''}
+      <div class="exercise-actions active-card-actions">
+        <button class="pill-button" onclick="showTip(${state.activeIndex})">How to</button>
+        <button class="pill-button" ${findSwap(state.activeIndex) ? '' : 'disabled'} onclick="swapActive()">Swap</button>
+      </div>
       <div class="set-label-row">
         <span>Set</span><span>${item.kind === 'strength' ? 'Weight' : 'Level'}</span><span>${item.kind === 'time' || item.kind === 'cardio' ? 'Time' : 'Reps'}</span><span>Done</span>
       </div>
       <div>${item.setData.map((set, index) => setRow(index, set, item)).join('')}</div>
     </section>
     <div class="active-actions">
-      <div class="footer-actions">
-        <button class="ghost-button" onclick="swapActive()">Swap</button>
-        <button class="primary-button" onclick="nextExercise()">${state.activeIndex === state.workout.exercises.length - 1 ? 'Finish workout' : 'Next exercise'}</button>
-      </div>
+      <button class="${completedCount ? 'primary-button' : 'ghost-button'}" onclick="advanceExercise()">${advanceLabel}</button>
     </div>`;
 
   startUiTimer();
@@ -900,14 +1810,6 @@ function setRow(index, set, item) {
   </div>`;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('"', '&quot;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;');
-}
-
 function updateSetValue(setIndex, field, value) {
   const item = state.workout.exercises[state.activeIndex];
   item.setData[setIndex][field] = value;
@@ -919,6 +1821,8 @@ function toggleSet(setIndex) {
   item.setData[setIndex].done = !item.setData[setIndex].done;
   if (item.setData[setIndex].done && item.rest > 0) {
     state.restUntil = Date.now() + (item.rest * 1000);
+  } else if (!item.setData[setIndex].done) {
+    state.restUntil = null;
   }
   persistCurrent();
   renderActive();
@@ -967,32 +1871,48 @@ function stopUiTimer() {
 
 function skipRest() {
   state.restUntil = null;
-  updateTimers();
+  const strip = document.getElementById('restStrip');
+  if (strip) strip.classList.add('hidden');
 }
 
 function swapActive() {
   pauseSessionClock();
   const replacement = findSwap(state.activeIndex);
   if (!replacement) {
-    showModal('No swap available', 'No other matching exercise fits the current equipment and caution selections.');
+    showModal('No different swap available', 'No other movement family fits the current target, equipment, and caution selections.');
     state.session.startedAt = Date.now();
     return;
   }
   const current = state.workout.exercises[state.activeIndex];
+  recordSwap(current, replacement);
   state.workout.exercises[state.activeIndex] = replacementWithSamePrescription(replacement, current);
   state.session.startedAt = Date.now();
   persistCurrent();
   renderActive();
 }
 
-function nextExercise() {
+function advanceExercise() {
+  const item = state.workout.exercises[state.activeIndex];
+  const completed = item.setData.some(set => set.done);
+
+  if (!completed && !state.workout.skipped.includes(item.id)) {
+    state.workout.skipped.push(item.id);
+    state.behavior.exerciseSkips[item.id] = (state.behavior.exerciseSkips[item.id] || 0) + 1;
+    safeSave(STORAGE.behavior, state.behavior);
+  }
+
+  if (completed) {
+    state.behavior.completedExercises[item.id] = (state.behavior.completedExercises[item.id] || 0) + 1;
+    safeSave(STORAGE.behavior, state.behavior);
+  }
+
   if (state.activeIndex < state.workout.exercises.length - 1) {
     state.activeIndex += 1;
     state.restUntil = null;
     persistCurrent();
     renderActive();
   } else {
-    prepareCompletion();
+    finishWorkout();
   }
 }
 
@@ -1010,60 +1930,105 @@ function pauseWorkout() {
   showWorkout();
 }
 
-function prepareCompletion() {
+function finishWorkout() {
   pauseSessionClock();
   stopUiTimer();
+
   const completedSets = state.workout.exercises.reduce(
     (sum, item) => sum + item.setData.filter(set => set.done).length,
     0
   );
-  state.pendingSummary = {
+
+  const record = {
+    id: `history-${Date.now()}`,
     date: new Date().toISOString(),
     title: state.workout.title,
     minutes: Math.max(1, Math.round(state.session.elapsedMs / 60000)),
     exercises: state.workout.exercises.length,
     completedSets,
     focuses: [...state.workout.focuses],
+    source: state.workout.source,
+    feedback: 'Not rated',
+    swaps: clone(state.workout.swaps || []),
+    skipped: [...(state.workout.skipped || [])],
     details: state.workout.exercises.map(item => ({
+      id: item.id,
       name: item.name,
+      family: item.family,
+      pattern: item.pattern,
+      muscle: item.muscle,
+      kind: item.kind,
+      prescription: {
+        sets: item.sets,
+        reps: item.reps,
+        rest: item.rest
+      },
+      skipped: state.workout.skipped.includes(item.id),
       sets: item.setData.map(set => ({ ...set }))
     }))
   };
-  renderCompletion();
-}
 
-function renderCompletion() {
-  const summary = state.pendingSummary;
-  app.innerHTML = `
-    <div class="topbar"><div class="brand">FORM</div></div>
-    <section class="hero">
-      <div class="eyebrow">Complete</div>
-      <h1>Nicely done.</h1>
-      <p class="lede">${summary.minutes} minutes · ${summary.completedSets} completed sets</p>
-    </section>
-    <section class="card">
-      <h2 class="question-title" style="font-size:28px">How did that feel?</h2>
-      <p class="question-copy">Your answer is saved with the workout so your history reflects how the session actually felt.</p>
-      <div class="feedback">
-        <button class="secondary-button" onclick="saveCompletion('Too easy')">Too easy</button>
-        <button class="primary-button" onclick="saveCompletion('Just right')">Just right</button>
-        <button class="secondary-button" onclick="saveCompletion('Too hard')">Too hard</button>
-        <button class="text-button" onclick="saveCompletion('Not rated')">Skip</button>
-      </div>
-    </section>`;
-}
-
-function saveCompletion(feedback) {
-  if (!state.pendingSummary) return;
-  state.history.unshift({ ...state.pendingSummary, feedback });
+  state.history.unshift(record);
   safeSave(STORAGE.history, state.history);
-  state.pendingSummary = null;
+
+  if (
+    state.workout.source === 'plan' &&
+    Number(state.workout.planIndex) === Number(state.profile.splitIndex)
+  ) {
+    state.profile.splitIndex = (state.profile.splitIndex + 1) % state.profile.splitSequence.length;
+    state.profile.updatedAt = new Date().toISOString();
+    safeSave(STORAGE.profile, state.profile);
+  }
+
+  state.lastCompletedId = record.id;
   state.workout = null;
+  state.answers = null;
   state.session = { active: false, startedAt: null, elapsedMs: 0 };
   state.activeIndex = 0;
   state.restUntil = null;
   safeRemove(STORAGE.current);
-  renderHome();
+  renderCompletion(record.id);
+}
+
+function renderCompletion(id) {
+  state.view = 'completion';
+  const record = state.history.find(item => item.id === id);
+  if (!record) {
+    renderHome();
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="topbar">
+      <div class="brand">FORM</div>
+      <button class="text-button" onclick="renderHome()">Done</button>
+    </div>
+    <section class="hero">
+      <div class="eyebrow">Complete</div>
+      <h1>Nicely done.</h1>
+      <p class="lede">${record.minutes} minutes · ${record.completedSets} completed sets</p>
+    </section>
+    <section class="card">
+      <h2 class="question-title" style="font-size:28px">How did that feel?</h2>
+      <p class="question-copy">Optional. This helps the workout history reflect how the session actually felt.</p>
+      <div class="chip-grid three">
+        ${['Too easy', 'Just right', 'Too hard'].map(value => chipButton(
+          value,
+          record.feedback === value,
+          `setCompletionFeedback('${escapeJs(id)}', '${escapeJs(value)}')`
+        )).join('')}
+      </div>
+      <button class="primary-button field-gap" onclick="renderHome()">Done</button>
+      <button class="text-button centered" onclick="shareFeedback()">Send beta feedback</button>
+    </section>`;
+}
+
+function setCompletionFeedback(id, feedback) {
+  const record = state.history.find(item => item.id === id);
+  if (!record) return;
+  record.feedback = feedback;
+  safeSave(STORAGE.history, state.history);
+  renderCompletion(id);
 }
 
 function persistCurrent() {
@@ -1071,14 +2036,14 @@ function persistCurrent() {
     safeRemove(STORAGE.current);
     return;
   }
-  const elapsedMs = getElapsedMs();
+
   safeSave(STORAGE.current, {
     answers: state.answers,
     workout: state.workout,
     activeIndex: state.activeIndex,
     session: {
       active: state.session.active,
-      elapsedMs
+      elapsedMs: getElapsedMs()
     }
   });
 }
@@ -1087,85 +2052,509 @@ function showHistory() {
   stopUiTimer();
   state.view = 'history';
   app.innerHTML = `
-    <div class="topbar"><div class="brand">FORM</div></div>
+    <div class="topbar">
+      <button class="icon-button" aria-label="Back home" onclick="renderHome()">←</button>
+      <div class="brand">FORM</div>
+      <div style="width:44px"></div>
+    </div>
     <section class="hero">
       <div class="eyebrow">Progress</div>
       <h2 class="question-title">Workout history</h2>
-      <p class="question-copy">Simple proof that you showed up.</p>
+      <p class="question-copy">Open a workout to review the exercises, sets, reps, weights, swaps, and skips.</p>
     </section>
-    <section class="card">
-      ${state.history.length ? state.history.map(historyItem).join('') : '<div class="empty">Completed workouts will appear here.</div>'}
+    <section class="card history-card">
+      ${state.history.length
+        ? state.history.map(historyItem).join('')
+        : '<div class="empty">Completed workouts will appear here.</div>'}
     </section>
     ${nav('history')}`;
 }
 
 function historyItem(item) {
   const focusText = item.focuses?.length ? formatList(item.focuses) : item.title;
-  return `<div class="history-item">
-    <div>
+  return `<button class="history-item-button" onclick="showHistoryDetail('${escapeJs(item.id)}')">
+    <span>
       <strong>${escapeHtml(item.title)}</strong>
-      <span>${new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ${escapeHtml(focusText)}</span>
-    </div>
-    <div style="text-align:right">
+      <small>${new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })} · ${escapeHtml(focusText)}</small>
+    </span>
+    <span class="history-right">
       <strong>${item.minutes} min</strong>
-      <span>${item.feedback || `${item.exercises} moves`}</span>
+      <small>${item.feedback || `${item.exercises} moves`}</small>
+    </span>
+  </button>`;
+}
+
+function showHistoryDetail(id) {
+  stopUiTimer();
+  state.view = 'history-detail';
+  const workout = state.history.find(item => item.id === id);
+  if (!workout) {
+    showHistory();
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="topbar">
+      <button class="icon-button" aria-label="Back to history" onclick="showHistory()">←</button>
+      <div class="brand">FORM</div>
+      <div style="width:44px"></div>
+    </div>
+    <section class="workout-head">
+      <div>
+        <div class="eyebrow">${new Date(workout.date).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+        <h2>${escapeHtml(workout.title)}</h2>
+        <div class="workout-meta">${workout.minutes} min · ${workout.completedSets || 0} completed sets · ${escapeHtml(workout.feedback || 'Not rated')}</div>
+      </div>
+    </section>
+    <section class="exercise-list">
+      ${(workout.details || []).map((detail, index) => historyExercise(detail, index)).join('')}
+    </section>
+    ${(workout.swaps || []).length ? `
+      <section class="card">
+        <div class="eyebrow">Swaps</div>
+        ${(workout.swaps || []).map(swap => `<p class="history-note">${escapeHtml(swap.from)} → ${escapeHtml(swap.to)}</p>`).join('')}
+      </section>` : ''}
+    ${nav('history-detail')}`;
+}
+
+function historyExercise(detail, index) {
+  const completed = (detail.sets || []).filter(set => set.done);
+  return `<article class="exercise-card">
+    <div class="exercise-main">
+      <div class="exercise-number">${String(index + 1).padStart(2, '0')} · ${escapeHtml(detail.muscle || detail.pattern || '')}</div>
+      <div class="exercise-name">${escapeHtml(detail.name)}</div>
+      ${detail.skipped ? '<div class="skip-label">Skipped</div>' : ''}
+      ${completed.length
+        ? `<div class="set-summary-list">${completed.map((set, setIndex) => {
+            const pieces = [];
+            if (set.weight) pieces.push(`${escapeHtml(set.weight)} lb`);
+            if (set.reps) pieces.push(`${escapeHtml(set.reps)} reps`);
+            return `<div><span>Set ${setIndex + 1}</span><strong>${pieces.join(' × ') || 'Completed'}</strong></div>`;
+          }).join('')}</div>`
+        : '<p class="helper">No completed sets recorded.</p>'}
+    </div>
+  </article>`;
+}
+
+function showMenu() {
+  showModal(
+    'Form',
+    '',
+    `<div class="menu-list">
+      ${menuItem('Profile', 'Name, experience and body-weight history', 'showProfileSettings()')}
+      ${menuItem('Training Plan', 'Days per week and workout sequence', 'showTrainingPlanSettings()')}
+      ${menuItem('Equipment', 'What Form can use', 'showEquipmentSettings()')}
+      ${menuItem('Preferences', 'Goal, duration, limitations and priorities', 'showPreferencesSettings()')}
+      ${menuItem('History', 'Review completed workouts', 'showHistory()')}
+      ${menuItem('About Me', 'Why Form was created', 'showAboutMe()')}
+      ${menuItem('Help / Send Feedback', 'Share a beta bug or suggestion', 'showHelp()')}
+    </div>`
+  );
+}
+
+function menuItem(title, subtitle, action) {
+  return `<button class="menu-item" onclick="closeCurrentModal(); ${action}">
+    <span><strong>${title}</strong><small>${subtitle}</small></span><span>›</span>
+  </button>`;
+}
+
+function startSettings(section) {
+  stopUiTimer();
+  state.view = `settings-${section}`;
+  state.settingsDraft = clone(state.profile);
+}
+
+function settingsHeader(title, backAction = 'renderHome()') {
+  return `<div class="topbar">
+    <button class="icon-button" aria-label="Go back" onclick="${backAction}">←</button>
+    <div class="brand">${title}</div>
+    <div style="width:44px"></div>
+  </div>`;
+}
+
+function showProfileSettings() {
+  startSettings('profile');
+  renderProfileSettings();
+}
+
+function renderProfileSettings() {
+  const draft = state.settingsDraft;
+  const latestWeight = draft.weightHistory.at(-1)?.weight || '';
+
+  app.innerHTML = `
+    ${settingsHeader('Profile')}
+    <section class="hero">
+      <h2 class="question-title">Profile</h2>
+      <p class="question-copy">Edit the information Form uses to personalize the experience.</p>
+    </section>
+    <section class="card">
+      <label class="field-label" for="profileFirst">First name</label>
+      <input id="profileFirst" class="text-input" value="${escapeHtml(draft.firstName)}" oninput="setSettingsField('firstName', this.value)" />
+      <div class="field-label field-gap">Training experience</div>
+      <div class="chip-grid three">
+        ${experienceChoices.map(value => chipButton(value, draft.experience === value, `setSettingsFieldAndRender('experience', '${value}', 'profile')`)).join('')}
+      </div>
+    </section>
+    <section class="card">
+      <label class="field-label" for="bodyWeight">Current body weight <span>optional</span></label>
+      <input id="bodyWeight" class="text-input" inputmode="decimal" value="${escapeHtml(draft.pendingWeight ?? latestWeight)}" placeholder="Weight in lb" oninput="setSettingsField('pendingWeight', this.value)" />
+      <p class="helper">New entries are added to your private on-device history instead of replacing older entries.</p>
+      ${draft.weightHistory.length ? `<div class="weight-history">${draft.weightHistory.slice(-3).reverse().map(entry =>
+        `<div><span>${new Date(entry.date).toLocaleDateString()}</span><strong>${escapeHtml(entry.weight)} lb</strong></div>`
+      ).join('')}</div>` : ''}
+    </section>
+    ${settingsSaveBar("saveSettings('profile')")}`;
+}
+
+function showTrainingPlanSettings() {
+  startSettings('plan');
+  renderTrainingPlanSettings();
+}
+
+function renderTrainingPlanSettings() {
+  const draft = state.settingsDraft;
+  const recommendation = recommendSplit(draft);
+  app.innerHTML = `
+    ${settingsHeader('Training Plan')}
+    <section class="hero">
+      <h2 class="question-title">Training plan</h2>
+      <p class="question-copy">Completed workouts advance the sequence. Missed days do not skip ahead.</p>
+    </section>
+    <section class="card">
+      <div class="field-label">Days per week</div>
+      <div class="chip-grid six">
+        ${[1, 2, 3, 4, 5, 6].map(value => chipButton(value, draft.daysPerWeek === value, `setPlanDays(${value})`)).join('')}
+      </div>
+    </section>
+    <div class="option-grid">
+      ${optionButton('Let Form choose for me', draft.splitMode === 'form', "setPlanMode('form')", false, `Recommended: ${recommendation}`)}
+    </div>
+    <div class="focus-section">
+      <h3 class="focus-section-title">Choose my split</h3>
+      <div class="option-grid">
+        ${availableSplits(draft.daysPerWeek).map(name => optionButton(
+          name,
+          draft.splitMode === 'custom' && draft.splitName === name,
+          `setPlanName('${escapeJs(name)}')`,
+          false,
+          splitDescription(name)
+        )).join('')}
+      </div>
+    </div>
+    ${settingsSaveBar("saveSettings('plan')")}`;
+}
+
+function setPlanDays(value) {
+  state.settingsDraft.daysPerWeek = Number(value);
+  if (state.settingsDraft.splitMode === 'form') state.settingsDraft.splitName = recommendSplit(state.settingsDraft);
+  renderTrainingPlanSettings();
+}
+
+function setPlanMode(mode) {
+  state.settingsDraft.splitMode = mode;
+  if (mode === 'form') state.settingsDraft.splitName = recommendSplit(state.settingsDraft);
+  renderTrainingPlanSettings();
+}
+
+function setPlanName(name) {
+  state.settingsDraft.splitMode = 'custom';
+  state.settingsDraft.splitName = name;
+  renderTrainingPlanSettings();
+}
+
+function showEquipmentSettings() {
+  startSettings('equipment');
+  renderEquipmentSettings();
+}
+
+function renderEquipmentSettings() {
+  const draft = state.settingsDraft;
+  app.innerHTML = `
+    ${settingsHeader('Equipment')}
+    <section class="hero">
+      <h2 class="question-title">Available equipment</h2>
+      <p class="question-copy">Choose a common setup or fine-tune the list below.</p>
+    </section>
+    <div class="option-grid">
+      ${Object.entries(setupPresets).filter(([key]) => key !== 'custom').map(([key, preset]) =>
+        optionButton(preset.label, draft.setup === key, `setSettingsSetup('${key}')`)
+      ).join('')}
+    </div>
+    <section class="card">
+      <div class="field-label">Fine-tune equipment</div>
+      <div class="option-grid two-column">
+        ${equipmentChoices.map(([value, label]) => optionButton(
+          label,
+          draft.equipment.includes(value),
+          `toggleSettingsEquipment('${value}')`,
+          true
+        )).join('')}
+      </div>
+      <p class="helper">Bodyweight movements are always available.</p>
+    </section>
+    ${settingsSaveBar("saveSettings('equipment')")}`;
+}
+
+function setSettingsSetup(value) {
+  state.settingsDraft.setup = value;
+  state.settingsDraft.equipment = [...setupPresets[value].equipment];
+  renderEquipmentSettings();
+}
+
+function toggleSettingsEquipment(value) {
+  const equipment = [...state.settingsDraft.equipment];
+  state.settingsDraft.equipment = equipment.includes(value)
+    ? equipment.filter(item => item !== value)
+    : [...equipment, value];
+  state.settingsDraft.equipment = [...new Set(['bodyweight', ...state.settingsDraft.equipment])];
+  state.settingsDraft.setup = findMatchingSetup(state.settingsDraft.equipment) || 'custom';
+  renderEquipmentSettings();
+}
+
+function findMatchingSetup(equipment) {
+  return Object.entries(setupPresets)
+    .filter(([key]) => key !== 'custom')
+    .find(([, preset]) => arraysEqualSets(preset.equipment, equipment))?.[0] || null;
+}
+
+function showPreferencesSettings() {
+  startSettings('preferences');
+  renderPreferencesSettings();
+}
+
+function renderPreferencesSettings() {
+  const draft = state.settingsDraft;
+  app.innerHTML = `
+    ${settingsHeader('Preferences')}
+    <section class="hero">
+      <h2 class="question-title">Preferences</h2>
+      <p class="question-copy">Changes affect future workouts. Completed history stays exactly as recorded.</p>
+    </section>
+    <section class="card">
+      <div class="field-label">Primary goal</div>
+      <div class="option-grid">
+        ${goalChoices.map(value => optionButton(value, draft.goal === value, `setSettingsFieldAndRender('goal', '${escapeJs(value)}', 'preferences')`, true)).join('')}
+      </div>
+      <div class="field-label field-gap">Normal workout length</div>
+      <div class="chip-grid">
+        ${[20, 30, 45, 60].map(value => chipButton(`${value} min`, draft.duration === value, `setSettingsNumberAndRender('duration', ${value}, 'preferences')`)).join('')}
+      </div>
+    </section>
+    <section class="card">
+      <div class="field-label">Limitations</div>
+      <div class="option-grid">
+        ${limitationChoices.map(value => optionButton(
+          value,
+          draft.limitations.includes(value),
+          `toggleSettingsArray('limitations', '${escapeJs(value)}', true, 'preferences')`,
+          true
+        )).join('')}
+      </div>
+    </section>
+    <section class="card">
+      <div class="field-label">Muscle priorities <span>up to three</span></div>
+      <div class="option-grid two-column">
+        ${priorityChoices.map(value => optionButton(
+          value,
+          draft.musclePriorities.includes(value),
+          `toggleSettingsPriority('${escapeJs(value)}')`,
+          true
+        )).join('')}
+      </div>
+      <label class="field-label field-gap" for="preferenceDislikes">Exercise dislikes <span>optional</span></label>
+      <input id="preferenceDislikes" class="text-input" value="${escapeHtml(draft.dislikes)}" placeholder="Comma separated" oninput="setSettingsField('dislikes', this.value)" />
+    </section>
+    ${settingsSaveBar("saveSettings('preferences')")}`;
+}
+
+function settingsSaveBar(action) {
+  return `<div class="builder-actions">
+    <div class="footer-actions">
+      <button class="ghost-button" onclick="renderHome()">Cancel</button>
+      <button class="primary-button" onclick="${action}">Save changes</button>
     </div>
   </div>`;
 }
 
-function showSettings() {
-  const historyLabel = state.history.length === 1 ? '1 completed workout' : `${state.history.length} completed workouts`;
-  showModal(
-    'About Form',
-    '',
-    `<div class="settings-row">
-      <strong>Simple by design</strong>
-      <span>Form asks only what it needs to create one focused workout at a time.</span>
-    </div>
-    <div class="settings-row">
-      <strong>Private on this device</strong>
-      <span>Workout history is stored in this browser. This version has no account, advertising, analytics, or cloud sync.</span>
-    </div>
-    <div class="settings-row">
-      <strong>Safety</strong>
-      <span>Form provides general fitness information, not medical advice. Stop if a movement causes pain. People with an injury, pregnancy, chronic condition, or symptoms should obtain guidance from a qualified professional.</span>
-    </div>
-    <div class="settings-row">
-      <strong>Version 2.1</strong>
-      <span>${historyLabel} saved locally.</span>
-    </div>
-    <div class="modal-actions">
-      ${state.history.length ? '<button class="danger-button" onclick="confirmClearHistory()">Clear history</button>' : ''}
-      <button class="primary-button" onclick="closeCurrentModal()">Done</button>
-    </div>`
-  );
+function setSettingsField(key, value) {
+  state.settingsDraft[key] = value;
 }
 
-function confirmClearHistory() {
-  closeCurrentModal();
-  showModal(
-    'Clear workout history?',
-    'This permanently removes completed workouts saved in this browser.',
-    `<div class="modal-actions">
-      <button class="danger-button" onclick="clearHistory()">Clear history</button>
-      <button class="ghost-button" onclick="closeCurrentModal()">Cancel</button>
-    </div>`
-  );
+function setSettingsFieldAndRender(key, value, section) {
+  state.settingsDraft[key] = value;
+  if (section === 'profile') renderProfileSettings();
+  if (section === 'preferences') renderPreferencesSettings();
 }
 
-function clearHistory() {
-  state.history = [];
-  safeSave(STORAGE.history, []);
-  closeCurrentModal();
+function setSettingsNumberAndRender(key, value, section) {
+  state.settingsDraft[key] = Number(value);
+  if (section === 'preferences') renderPreferencesSettings();
+}
+
+function toggleSettingsArray(key, value, supportsNone, section) {
+  let array = [...state.settingsDraft[key]];
+  if (supportsNone) {
+    if (value === 'None') array = ['None'];
+    else {
+      array = array.filter(item => item !== 'None');
+      array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
+      if (!array.length) array = ['None'];
+    }
+  } else {
+    array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
+  }
+  state.settingsDraft[key] = array;
+  if (section === 'preferences') renderPreferencesSettings();
+}
+
+function toggleSettingsPriority(value) {
+  const priorities = [...state.settingsDraft.musclePriorities];
+  if (priorities.includes(value)) {
+    state.settingsDraft.musclePriorities = priorities.filter(item => item !== value);
+  } else if (priorities.length < 3) {
+    state.settingsDraft.musclePriorities = [...priorities, value];
+  }
+  renderPreferencesSettings();
+}
+
+function saveSettings(section) {
+  const previousSplit = state.profile.splitName;
+  const draft = normalizeProfile(state.settingsDraft);
+
+  if (section === 'profile') {
+    draft.firstName = String(state.settingsDraft.firstName || '').trim() || state.profile.firstName;
+    const pendingWeight = Number(state.settingsDraft.pendingWeight);
+    const latest = Number(draft.weightHistory.at(-1)?.weight);
+    if (Number.isFinite(pendingWeight) && pendingWeight > 0 && pendingWeight !== latest) {
+      draft.weightHistory.push({ date: new Date().toISOString(), weight: formatNumber(pendingWeight) });
+    }
+  }
+
+  if (section === 'plan') {
+    draft.splitName = draft.splitMode === 'form' ? recommendSplit(draft) : draft.splitName;
+    draft.splitSequence = clone(splitDefinitions[draft.splitName]);
+    if (draft.splitName !== previousSplit) draft.splitIndex = 0;
+  } else if (section === 'preferences' && state.profile.splitMode === 'form') {
+    draft.splitMode = 'form';
+    draft.splitName = recommendSplit(draft);
+    draft.splitSequence = clone(splitDefinitions[draft.splitName]);
+    draft.splitIndex = draft.splitName === previousSplit ? state.profile.splitIndex : 0;
+  } else {
+    draft.splitName = state.profile.splitName;
+    draft.splitMode = state.profile.splitMode;
+    draft.splitSequence = clone(state.profile.splitSequence);
+    draft.splitIndex = state.profile.splitIndex;
+  }
+
+  draft.onboarded = true;
+  draft.updatedAt = new Date().toISOString();
+  state.profile = draft;
+  safeSave(STORAGE.profile, state.profile);
+  state.settingsDraft = null;
   renderHome();
+}
+
+function showAboutMe() {
+  stopUiTimer();
+  state.view = 'about';
+  app.innerHTML = `
+    ${settingsHeader('About Me')}
+    <section class="hero">
+      <div class="eyebrow">About Me</div>
+      <h2 class="question-title">Hi, I’m Kollin, the creator of Form.</h2>
+    </section>
+    <section class="card about-copy">
+      <p>I built Form around a simple idea: working out should not require a bunch of planning before you can even start. Fitness apps have become crowded with menus, charts, settings, and decisions that can make something simple feel complicated.</p>
+      <p>Form was built to strip away that clutter.</p>
+      <p>The goal is to give you a personalized, evidence-informed workout without making you think about every exercise, set, rep, or progression on your own. You tell Form what matters to you, and Form handles the rest.</p>
+      <strong>Simple on the surface. Thoughtful underneath.</strong>
+      <p>That’s what Form is meant to be.</p>
+    </section>
+    ${nav('about')}`;
+}
+
+function showHelp() {
+  stopUiTimer();
+  state.view = 'help';
+  app.innerHTML = `
+    ${settingsHeader('Help')}
+    <section class="hero">
+      <h2 class="question-title">Help improve Form</h2>
+      <p class="question-copy">Share a bug, confusing behavior, feature suggestion, or general beta feedback.</p>
+    </section>
+    <section class="card">
+      <div class="settings-row">
+        <strong>Before sending</strong>
+        <span>Include what you tapped, what you expected, and what happened instead.</span>
+      </div>
+      <button class="primary-button field-gap" onclick="shareFeedback()">Share feedback</button>
+      <button class="secondary-button field-gap-small" onclick="copyFeedbackTemplate()">Copy feedback template</button>
+      <p class="helper" id="feedbackStatus"></p>
+    </section>
+    <section class="card">
+      <div class="eyebrow">Privacy</div>
+      <p class="helper" style="margin:0">This beta stores profile, workout, and history data in this browser. It does not currently use accounts, advertising, analytics, or cloud sync.</p>
+    </section>
+    ${nav('help')}`;
+}
+
+function feedbackTemplate() {
+  return `Form beta feedback
+
+What I was doing:
+
+What I expected:
+
+What happened:
+
+Device/browser:
+
+Form version: ${VERSION}`;
+}
+
+async function shareFeedback() {
+  const text = feedbackTemplate();
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Form beta feedback', text });
+      return;
+    } catch (error) {
+      if (error?.name === 'AbortError') return;
+    }
+  }
+  await copyText(text);
+  showFeedbackStatus('Feedback template copied.');
+}
+
+async function copyFeedbackTemplate() {
+  await copyText(feedbackTemplate());
+  showFeedbackStatus('Feedback template copied.');
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = document.createElement('textarea');
+    area.value = text;
+    document.body.appendChild(area);
+    area.select();
+    document.execCommand('copy');
+    area.remove();
+  }
+}
+
+function showFeedbackStatus(message) {
+  const status = document.getElementById('feedbackStatus');
+  if (status) status.textContent = message;
 }
 
 function showModal(title, text, customContent = '') {
   document.body.insertAdjacentHTML('beforeend', `
     <div class="modal-backdrop" id="modal" onclick="closeModalFromBackdrop(event)">
       <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
-        <h3 id="modalTitle">${title}</h3>
-        ${text ? `<p>${text}</p>` : ''}
+        <h3 id="modalTitle">${escapeHtml(title)}</h3>
+        ${text ? `<p>${escapeHtml(text)}</p>` : ''}
         ${customContent || '<div class="modal-actions"><button class="primary-button" onclick="closeCurrentModal()">Got it</button></div>'}
       </div>
     </div>`);
@@ -1181,7 +2570,7 @@ function closeCurrentModal() {
 
 function openLatest() {
   if (!state.workout) {
-    startBuilder();
+    startPlanWorkout();
   } else if (state.session.active) {
     resumeWorkout();
   } else {
@@ -1195,6 +2584,18 @@ function goHome() {
   renderHome();
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+}
+
+function escapeJs(value) {
+  return String(value).replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+}
+
 window.addEventListener('beforeunload', () => {
   if (state.session.active) pauseSessionClock();
   persistCurrent();
@@ -1204,4 +2605,4 @@ if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js').catch(() => {});
 }
 
-renderHome();
+renderInitial();

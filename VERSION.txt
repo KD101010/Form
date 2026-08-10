@@ -1,0 +1,4 @@
+Form Beta
+Version: 3.0.0
+Release package: GitHub Pages static build
+Data model: local browser storage

@@ -1,9 +1,9 @@
-const CACHE = 'form-v2-20260805-icon-v3';
+const CACHE = 'form-v3-20260810';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css',
-  './app.js',
+  './styles.css?v=3.0.0',
+  './app.js?v=3.0.0',
   './manifest.webmanifest',
   './icon-192-v3.png',
   './icon-512-v3.png',
