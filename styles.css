@@ -450,6 +450,20 @@ input[type="range"] {
   background: var(--bg);
   text-align: center;
 }
+.set-static {
+  width: 100%;
+  min-height: 43px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--soft);
+  color: var(--muted);
+  text-align: center;
+  font-size: 13px;
+  font-weight: 760;
+}
 .set-check {
   width: 42px;
   height: 42px;

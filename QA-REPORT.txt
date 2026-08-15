@@ -1,18 +1,27 @@
-FORM BETA V3.0 QA REPORT
+FORM BETA V3.1 QA REPORT
 
 PASS: app.js syntax
 PASS: sw.js syntax
-PASS: Core workout tests
-  PASS
-PASS: Profile, migration, and settings tests
-  PASS
-PASS: apple-touch-icon-v3.png dimensions
-  (180, 180)
-PASS: icon-192-v3.png dimensions
-  (192, 192)
-PASS: icon-512-v3.png dimensions
-  (512, 512)
+PASS: Focused v3.1 regression suite
+  63 checks passed
+PASS: Generator matrix
+  1,624 generated workout scenarios checked
+  0 failures
+PASS: Equipment eligibility checks
+PASS: Limitation filtering checks
+PASS: Time-budget checks across strength, cardio, full-body, and multi-area sessions
+PASS: Previous-performance same-set regression
+PASS: Conservative progression regression
+PASS: Partial-plan non-advancement regression
+PASS: Completed-plan advancement regression
+PASS: Different-family swap regression
+PASS: Bodyweight tracking regression
+PASS: Existing approved icon files preserved
 
-Automated coverage includes 75 focus/equipment combinations, multi-area selection, equipment filtering, split sequencing, history migration, previous-performance prefill, different-family swapping, set persistence, rest-timer skip, settings persistence, and approved icon asset validation.
+The matrix covered multiple goals, time budgets, focus combinations, bodyweight-only equipment, home-gym equipment, full-gym equipment, and common limitation filters.
 
-This is beta validation, not a substitute for broad device testing or review by a qualified fitness professional.
+Mobility sessions are intentionally allowed to finish shorter than a long requested time when adding more repeated mobility work would be filler rather than useful programming. Form displays an estimated-session note when the difference is material.
+
+Browser-level visual and interaction testing was not completed in this environment. Physical iPhone Safari and installed Home Screen PWA testing still needs to be performed after GitHub Pages deployment.
+
+This is beta validation. It is not a substitute for broad device coverage or formal review by a qualified fitness professional.

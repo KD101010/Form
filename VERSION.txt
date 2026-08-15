@@ -1,4 +1,4 @@
 Form Beta
-Version: 3.0.0
+Version: 3.1.0
 Release package: GitHub Pages static build
-Data model: local browser storage
+Data model: local browser storage (v3 keys preserved)

@@ -1,6 +1,6 @@
 const app = document.getElementById('app');
 
-const VERSION = '3.0.0';
+const VERSION = '3.1.0';
 
 const STORAGE = {
   profile: 'form-profile-v3',
@@ -251,9 +251,9 @@ function normalizeBehavior(raw) {
 
 function inferFamily(id) {
   if (/^(brisk-walk|low-impact-circuit|shadow-boxing|incline-walk|bike-intervals|rower-intervals|elliptical-intervals|jump-rope)$/.test(id)) return `cardio-${id}`;
-  if (id === 'banded-lateral-walk') return 'hip-abduction';
+  if (/hip-abduction|banded-lateral-walk/.test(id)) return 'hip-abduction';
   if (/hip-thrust|glute-bridge|frog-pump/.test(id)) return 'bridge-hip-extension';
-  if (/rdl/.test(id)) return 'hip-hinge';
+  if (/rdl|deadlift|pull-through/.test(id)) return 'hip-hinge';
   if (/reverse-lunge|split-squat|step-up/.test(id)) return 'unilateral-knee-dominant';
   if (/squat|leg-press|wall-sit|leg-extension/.test(id)) return 'squat-knee-dominant';
   if (/hamstring-curl|leg-curl/.test(id)) return 'knee-flexion';
@@ -261,6 +261,7 @@ function inferFamily(id) {
   if (/pulldown|pullover/.test(id)) return 'vertical-pull';
   if (/row|reverse-snow|prone-w/.test(id)) return 'horizontal-pull';
   if (/shoulder-press|landmine-press/.test(id)) return 'vertical-push';
+  if (/chest-fly|pec-deck/.test(id)) return 'chest-fly';
   if (/pushup|chest-press|floor-press|bench-press|squeeze-press/.test(id)) return 'horizontal-push';
   if (/lateral-raise|rear-delt|face-pull|pull-apart|wall-slide/.test(id)) return 'shoulder-accessory';
   if (/curl/.test(id) && !/hamstring|leg-curl/.test(id)) return 'elbow-flexion';
@@ -279,6 +280,7 @@ function inferPattern(id, focuses, kind) {
   const family = inferFamily(id);
   const map = {
     'bridge-hip-extension': 'hip extension',
+    'hip-abduction': 'hip abduction',
     'hip-hinge': 'hip hinge',
     'unilateral-knee-dominant': 'single-leg',
     'squat-knee-dominant': 'squat',
@@ -288,6 +290,7 @@ function inferPattern(id, focuses, kind) {
     'horizontal-pull': 'horizontal pull',
     'vertical-push': 'vertical push',
     'horizontal-push': 'horizontal push',
+    'chest-fly': 'horizontal adduction',
     'shoulder-accessory': 'shoulder accessory',
     'elbow-flexion': 'arm isolation',
     'elbow-extension': 'arm isolation',
@@ -301,29 +304,47 @@ function inferPattern(id, focuses, kind) {
 
 function inferRole(id, kind) {
   if (kind !== 'strength' && kind !== 'time') return kind;
-  const compound = /hip-thrust|lunge|split-squat|step-up|squat|leg-press|rdl|row|pulldown|pushup|press|landmine|pallof/.test(id);
-  return compound ? 'compound' : 'accessory';
+  const family = inferFamily(id);
+  if (['hip-hinge', 'unilateral-knee-dominant', 'squat-knee-dominant', 'vertical-push', 'horizontal-push'].includes(family)) return 'compound';
+  if (family === 'horizontal-pull') return /row/.test(id) ? 'compound' : 'accessory';
+  if (family === 'vertical-pull') return /pulldown/.test(id) && !/straight-arm/.test(id) ? 'compound' : 'accessory';
+  if (family === 'bridge-hip-extension' && /hip-thrust/.test(id)) return 'compound';
+  return 'accessory';
 }
 
 function inferDifficulty(id) {
-  if (/barbell-back-squat|single-leg-rdl|inverted-row|landmine-press|hollow-hold|jump-rope/.test(id)) return 'advanced';
-  if (/bulgarian|split-squat|step-up|barbell-rdl|side-plank|pushup/.test(id)) return 'intermediate';
+  if (/barbell-back-squat|conventional-deadlift|single-leg-rdl|inverted-row|landmine-press|hollow-hold|jump-rope/.test(id)) return 'advanced';
+  if (/bulgarian|split-squat|step-up|barbell-rdl|barbell-bench-press|side-plank|pushup/.test(id)) return 'intermediate';
   return 'beginner';
 }
 
-function requiredEquipment(equipment) {
+function requiredEquipment(equipment, id = '') {
+  if (id === 'barbell-bench-press') return ['barbell', 'bench'];
   if (equipment === 'bench') return ['dumbbells', 'bench'];
   return [equipment];
 }
 
+function inferTracking(requires, kind) {
+  if (kind === 'cardio') return 'effort';
+  if (kind === 'mobility') return 'none';
+  if (requires.some(item => ['dumbbells', 'barbell', 'machine', 'cable'].includes(item))) return 'weight';
+  if (requires.includes('bands')) return 'band';
+  return 'bodyweight';
+}
+
+function inferUnilateral(id) {
+  return /single-leg|one-arm|reverse-lunge|split-squat|step-up|kickback|side-plank|concentration-curl|pallof|landmine-press/.test(id);
+}
+
 function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength') {
+  const requires = requiredEquipment(equipment, id);
   return {
     id,
     name,
     focuses,
     muscle,
     equipment,
-    requires: requiredEquipment(equipment),
+    requires,
     avoid,
     cue,
     kind,
@@ -331,6 +352,8 @@ function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength')
     pattern: inferPattern(id, focuses, kind),
     role: inferRole(id, kind),
     difficulty: inferDifficulty(id),
+    tracking: inferTracking(requires, kind),
+    unilateral: inferUnilateral(id),
     video: null
   };
 }
@@ -347,12 +370,15 @@ const exerciseLibrary = [
   ex('reverse-lunge', 'Reverse lunge', ['Glutes', 'Legs', 'Quads'], 'Glutes + legs', 'bodyweight', ['knees'], 'Step back far enough to keep the front foot planted and drive through the front heel.'),
   ex('dumbbell-reverse-lunge', 'Dumbbell reverse lunge', ['Glutes', 'Legs', 'Quads'], 'Glutes + legs', 'dumbbells', ['knees'], 'Stay tall, step back softly, and keep the front knee tracking over the toes.'),
   ex('step-up', 'Step-up', ['Glutes', 'Legs', 'Quads'], 'Glutes + quads', 'bodyweight', ['knees'], 'Use a stable step, place the full foot on it, and avoid pushing off the trailing leg.'),
+  ex('dumbbell-bulgarian-split-squat', 'Dumbbell Bulgarian split squat', ['Glutes', 'Legs', 'Quads'], 'Glutes + quads', 'dumbbells', ['knees'], 'Set the front foot far enough forward to stay balanced, lower under control, and drive through the front foot.'),
+  ex('machine-hip-abduction', 'Hip-abduction machine', ['Glutes'], 'Outer glutes', 'machine', [], 'Keep the pelvis steady, move through a comfortable range, and control the return.'),
 
   // Legs and quads
   ex('bodyweight-squat', 'Bodyweight squat', ['Legs', 'Quads'], 'Quads + glutes', 'bodyweight', ['knees'], 'Sit between the hips, keep the feet planted, and let the knees track with the toes.'),
   ex('goblet-squat', 'Goblet squat', ['Legs', 'Quads'], 'Quads + glutes', 'dumbbells', ['knees'], 'Hold the weight close, brace the torso, and keep pressure through the whole foot.'),
   ex('barbell-back-squat', 'Barbell back squat', ['Legs', 'Quads'], 'Legs', 'barbell', ['knees', 'lower back'], 'Brace before descending and use a depth that allows steady control and a neutral spine.'),
   ex('leg-press', 'Leg press', ['Legs', 'Quads'], 'Quads + glutes', 'machine', ['knees'], 'Keep the hips against the pad and stop before the lower back begins to round.'),
+  ex('hack-squat', 'Hack squat', ['Legs', 'Quads'], 'Quads + glutes', 'machine', ['knees'], 'Keep the feet planted, let the knees track with the toes, and use a depth you can control.'),
   ex('leg-extension', 'Leg extension', ['Quads'], 'Quads', 'machine', ['knees'], 'Lift smoothly, pause briefly near the top, and avoid snapping the knees straight.'),
   ex('wall-sit', 'Wall sit', ['Legs', 'Quads'], 'Quads', 'bodyweight', ['knees'], 'Keep the back supported and choose a knee angle that feels controlled and pain-free.', 'time'),
   ex('heel-elevated-squat', 'Heel-elevated squat', ['Quads'], 'Quads', 'bodyweight', ['knees'], 'Stay upright, move slowly, and keep the knees aligned with the toes.'),
@@ -362,6 +388,8 @@ const exerciseLibrary = [
   // Hamstrings
   ex('dumbbell-rdl', 'Dumbbell Romanian deadlift', ['Hamstrings', 'Glutes', 'Legs'], 'Hamstrings + glutes', 'dumbbells', ['lower back'], 'Push the hips back, keep the weights close, and stop when the hamstrings are fully loaded.'),
   ex('barbell-rdl', 'Barbell Romanian deadlift', ['Hamstrings', 'Glutes', 'Legs'], 'Hamstrings + glutes', 'barbell', ['lower back'], 'Keep the bar close to the legs and hinge without rounding or reaching for extra depth.'),
+  ex('conventional-deadlift', 'Conventional deadlift', ['Hamstrings', 'Glutes', 'Legs', 'Back'], 'Posterior chain', 'barbell', ['lower back'], 'Brace before the pull, keep the bar close, and stand tall without leaning back at the top.'),
+  ex('cable-pull-through', 'Cable pull-through', ['Hamstrings', 'Glutes'], 'Hamstrings + glutes', 'cable', ['lower back'], 'Step forward for cable tension, push the hips back, and finish by squeezing the glutes.'),
   ex('slider-hamstring-curl', 'Slider hamstring curl', ['Hamstrings'], 'Hamstrings', 'bodyweight', [], 'Keep the hips lifted and slide the heels slowly without losing trunk position.'),
   ex('stability-ball-curl', 'Stability-ball hamstring curl', ['Hamstrings'], 'Hamstrings', 'bodyweight', [], 'Keep the hips elevated while pulling the ball in with controlled heel pressure.'),
   ex('lying-leg-curl', 'Lying leg curl', ['Hamstrings'], 'Hamstrings', 'machine', [], 'Keep the hips down and curl through a smooth range without kicking.'),
@@ -387,18 +415,24 @@ const exerciseLibrary = [
   ex('machine-row', 'Chest-supported machine row', ['Back'], 'Back', 'machine', [], 'Keep the chest on the pad and control the return until the arms are long.'),
   ex('inverted-row', 'Inverted row', ['Back'], 'Back', 'barbell', ['shoulders', 'wrists'], 'Keep the body in one line and pull the chest toward the bar.'),
   ex('dumbbell-pullover', 'Dumbbell pullover', ['Back', 'Chest'], 'Lats + chest', 'dumbbells', ['shoulders'], 'Keep the ribs down and use only the shoulder range you can control.'),
+  ex('straight-arm-pulldown', 'Straight-arm cable pulldown', ['Back'], 'Lats', 'cable', ['shoulders'], 'Keep a soft elbow bend, pull the handle toward the thighs, and avoid turning it into a triceps movement.'),
 
   // Chest
   ex('incline-pushup', 'Incline push-up', ['Chest'], 'Chest + triceps', 'bodyweight', ['shoulders', 'wrists'], 'Keep the body straight and lower the chest toward the support with elbows angled back.'),
   ex('pushup', 'Push-up', ['Chest'], 'Chest + triceps', 'bodyweight', ['shoulders', 'wrists'], 'Brace the body as one unit and keep the elbows at a comfortable angle.'),
   ex('dumbbell-floor-press', 'Dumbbell floor press', ['Chest', 'Arms'], 'Chest + triceps', 'dumbbells', ['shoulders'], 'Keep the wrists stacked and pause gently when the upper arms meet the floor.'),
   ex('dumbbell-bench-press', 'Dumbbell bench press', ['Chest', 'Arms'], 'Chest + triceps', 'bench', ['shoulders'], 'Keep the feet planted and lower the weights with the forearms nearly vertical.'),
+  ex('barbell-bench-press', 'Barbell bench press', ['Chest', 'Arms'], 'Chest + triceps', 'barbell', ['shoulders'], 'Plant the feet, keep the shoulder blades set, and lower the bar with the forearms nearly vertical.'),
+  ex('cable-chest-fly', 'Cable chest fly', ['Chest'], 'Chest', 'cable', ['shoulders'], 'Keep a soft elbow bend and bring the hands together without letting the shoulders roll forward.'),
+  ex('pec-deck', 'Pec deck', ['Chest'], 'Chest', 'machine', ['shoulders'], 'Keep the upper back against the pad and bring the arms together through a comfortable range.'),
   ex('machine-chest-press', 'Machine chest press', ['Chest', 'Arms'], 'Chest + triceps', 'machine', ['shoulders'], 'Set the handles near mid-chest and press without letting the shoulders roll forward.'),
   ex('band-chest-press', 'Resistance-band chest press', ['Chest', 'Arms'], 'Chest + triceps', 'bands', ['shoulders'], 'Stand stable, keep the ribs down, and press forward without shrugging.'),
   ex('dumbbell-squeeze-press', 'Dumbbell squeeze press', ['Chest', 'Arms'], 'Chest + triceps', 'dumbbells', ['shoulders'], 'Press the dumbbells together throughout the repetition and move slowly.'),
 
   // Shoulders
   ex('seated-shoulder-press', 'Seated dumbbell shoulder press', ['Shoulders', 'Arms'], 'Shoulders + triceps', 'dumbbells', ['shoulders'], 'Keep the ribs down and press only through a comfortable overhead range.'),
+  ex('machine-shoulder-press', 'Machine shoulder press', ['Shoulders', 'Arms'], 'Shoulders + triceps', 'machine', ['shoulders'], 'Set the seat so the handles start around shoulder height and press without shrugging.'),
+  ex('cable-lateral-raise', 'Cable lateral raise', ['Shoulders'], 'Side delts', 'cable', ['shoulders'], 'Lead with the elbow, keep the torso quiet, and stop around shoulder height.'),
   ex('lateral-raise', 'Dumbbell lateral raise', ['Shoulders'], 'Side delts', 'dumbbells', ['shoulders'], 'Use light weight, lead with the elbows, and stop near shoulder height.'),
   ex('band-lateral-raise', 'Band lateral raise', ['Shoulders'], 'Side delts', 'bands', ['shoulders'], 'Keep the neck relaxed and raise with steady band tension.'),
   ex('rear-delt-fly', 'Rear-delt fly', ['Shoulders', 'Back'], 'Rear delts', 'dumbbells', ['lower back', 'shoulders'], 'Use a supported position when possible and move the arms without shrugging.'),
@@ -411,11 +445,13 @@ const exerciseLibrary = [
   ex('dumbbell-curl', 'Dumbbell biceps curl', ['Arms'], 'Biceps', 'dumbbells', [], 'Keep the elbows near the ribs and control the weight all the way down.'),
   ex('hammer-curl', 'Hammer curl', ['Arms'], 'Biceps + forearms', 'dumbbells', [], 'Keep the wrists neutral and avoid swinging the torso.'),
   ex('band-curl', 'Resistance-band curl', ['Arms'], 'Biceps', 'bands', [], 'Stand on the band securely and keep steady tension through the full range.'),
+  ex('cable-curl', 'Cable biceps curl', ['Arms'], 'Biceps', 'cable', [], 'Keep the elbows near the ribs and curl without letting the shoulders drift forward.'),
   ex('concentration-curl', 'Concentration curl', ['Arms'], 'Biceps', 'dumbbells', [], 'Brace the upper arm and curl without letting the shoulder roll forward.'),
   ex('triceps-kickback', 'Dumbbell triceps kickback', ['Arms'], 'Triceps', 'dumbbells', ['lower back'], 'Keep the upper arm still and straighten the elbow without swinging.'),
   ex('overhead-triceps-extension', 'Overhead triceps extension', ['Arms'], 'Triceps', 'dumbbells', ['shoulders'], 'Keep the ribs down and use a comfortable shoulder position.'),
   ex('band-pressdown', 'Resistance-band pressdown', ['Arms'], 'Triceps', 'bands', [], 'Pin the elbows near the sides and finish by straightening the arms.'),
   ex('cable-pressdown', 'Cable triceps pressdown', ['Arms'], 'Triceps', 'cable', [], 'Keep the elbows still and avoid leaning body weight into the handle.'),
+  ex('overhead-cable-triceps-extension', 'Overhead cable triceps extension', ['Arms'], 'Triceps', 'cable', ['shoulders'], 'Keep the upper arms steady and extend the elbows without arching the lower back.'),
   ex('close-grip-pushup', 'Close-grip incline push-up', ['Arms', 'Chest'], 'Triceps + chest', 'bodyweight', ['shoulders', 'wrists'], 'Use an incline that allows control and keep the elbows close to the torso.'),
 
   // Core
@@ -950,8 +986,8 @@ function dateKey(date) {
 }
 
 function estimateExerciseCount(minutes, focuses) {
-  if (focuses.length === 1 && focuses[0] === 'Cardio') return minutes <= 25 ? 2 : 3;
-  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 25 ? 4 : 6;
+  if (focuses.length === 1 && focuses[0] === 'Cardio') return 1;
+  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 20 ? 6 : 8;
   return minutes <= 20 ? 3 : minutes <= 30 ? 4 : minutes <= 45 ? 5 : minutes <= 60 ? 6 : 7;
 }
 
@@ -1176,10 +1212,10 @@ function consumeAdjustment() {
 
 function resolveFocuses(selected) {
   if (selected.includes('Full body')) {
-    return ['Legs', 'Chest', 'Back', 'Glutes', 'Core', 'Shoulders'];
+    return rankFocusesByNeed(['Legs', 'Chest', 'Back', 'Glutes', 'Core', 'Shoulders']);
   }
   if (selected.includes('Upper body')) {
-    return ['Back', 'Chest', 'Shoulders', 'Arms'];
+    return rankFocusesByNeed(['Back', 'Chest', 'Shoulders', 'Arms']);
   }
   if (selected.includes('Pick for me')) {
     return pickFocusesFromHistory();
@@ -1187,19 +1223,48 @@ function resolveFocuses(selected) {
   return [...selected];
 }
 
+function recentFocusExposure(limit = 5) {
+  const pool = ['Glutes', 'Legs', 'Quads', 'Hamstrings', 'Calves', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core'];
+  const counts = Object.fromEntries(pool.map(focus => [focus, 0]));
+
+  state.history.slice(0, limit).forEach((workout, index) => {
+    const recencyWeight = Math.max(1, limit - index);
+    let usedDetails = false;
+
+    (workout.details || []).forEach(detail => {
+      const completedSets = (detail.sets || []).filter(set => set.done).length;
+      if (!completedSets) return;
+      const exercise = exerciseLibrary.find(item => item.id === detail.id || (!detail.id && item.name === detail.name));
+      if (!exercise) return;
+      usedDetails = true;
+      [...new Set(exercise.focuses)].forEach(focus => {
+        if (counts[focus] !== undefined) counts[focus] += recencyWeight * Math.min(2, completedSets / 2);
+      });
+    });
+
+    if (!usedDetails) {
+      (workout.focuses || []).forEach(focus => {
+        if (counts[focus] !== undefined) counts[focus] += recencyWeight;
+      });
+    }
+  });
+
+  return counts;
+}
+
+function rankFocusesByNeed(pool) {
+  const counts = recentFocusExposure(5);
+  const priorities = new Set(state.profile.musclePriorities || []);
+  return [...pool].sort((a, b) => {
+    const aScore = (counts[a] || 0) - (priorities.has(a) ? 2 : 0);
+    const bScore = (counts[b] || 0) - (priorities.has(b) ? 2 : 0);
+    return aScore - bScore;
+  });
+}
+
 function pickFocusesFromHistory() {
   const pool = ['Glutes', 'Legs', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core'];
-  const counts = Object.fromEntries(pool.map(focus => [focus, 0]));
-  state.history.slice(0, 5).forEach((workout, index) => {
-    const weight = 5 - index;
-    (workout.focuses || []).forEach(focus => {
-      if (counts[focus] !== undefined) counts[focus] += weight;
-    });
-  });
-  state.profile.musclePriorities.forEach(focus => {
-    if (counts[focus] !== undefined) counts[focus] -= 2;
-  });
-  const ranked = pool.sort((a, b) => counts[a] - counts[b]);
+  const ranked = rankFocusesByNeed(pool);
   return ranked.slice(0, state.answers.time <= 25 ? 2 : 3);
 }
 
@@ -1221,12 +1286,18 @@ function generateWorkout() {
     return;
   }
 
+  const warmup = getWarmupMinutes(state.answers.time, resolvedFocuses);
+  const cooldown = getCooldownMinutes(state.answers.time, resolvedFocuses);
   const prescription = getBasePrescription();
-  const exercises = selectedExercises.map((item, index) => prescribeExercise(item, prescription, index));
+  const initiallyPrescribed = selectedExercises.map((item, index) =>
+    prescribeExercise(item, prescription, index, selectedExercises.length, warmup, cooldown)
+  );
+  const exercises = fitWorkoutToTime(initiallyPrescribed, state.answers.time, warmup, cooldown, resolvedFocuses);
   const limitationNote = buildLimitationNote();
   const goalNote = state.answers.goal === 'Lose fat / get leaner'
     ? 'This workout supports fitness and energy expenditure. Fat loss cannot be targeted to one body area.'
     : '';
+  const estimatedMinutes = estimateWorkoutMinutes(exercises, warmup, cooldown);
 
   state.workout = {
     id: `workout-${Date.now()}`,
@@ -1236,9 +1307,11 @@ function generateWorkout() {
     resolvedFocuses,
     source: state.answers.source,
     planIndex: state.answers.planIndex,
-    warmup: state.answers.time <= 20 ? 3 : state.answers.time <= 35 ? 4 : 6,
-    cooldown: resolvedFocuses.includes('Mobility + recovery') ? 5 : (state.answers.time <= 20 ? 2 : 3),
-    guidance: [goalNote, limitationNote, buildTimeNote(resolvedFocuses)].filter(Boolean),
+    targetMinutes: state.answers.time,
+    estimatedMinutes,
+    warmup,
+    cooldown,
+    guidance: [goalNote, limitationNote, buildTimeNote(resolvedFocuses, estimatedMinutes)].filter(Boolean),
     exercises,
     swaps: [],
     skipped: [],
@@ -1290,35 +1363,39 @@ function isEligible(item, answers) {
 }
 
 function getExerciseCount(minutes, focuses) {
-  if (focuses.length === 1 && focuses[0] === 'Cardio') return minutes <= 25 ? 2 : 3;
-  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 25 ? 4 : 6;
+  if (focuses.length === 1 && focuses[0] === 'Cardio') return 1;
+  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return minutes <= 20 ? 6 : 8;
 
-  let count = estimateExerciseCount(minutes, focuses);
-  count = Math.max(count, Math.min(focuses.length, 4));
+  // Start with a slightly deeper candidate pool. fitWorkoutToTime() then trims
+  // sets or lower-priority movements so the final prescription respects time.
+  let count = estimateExerciseCount(minutes, focuses) + 1;
+  count = Math.max(count, Math.min(focuses.length, 6));
 
   const singleFocus = state.answers.focuses.length === 1 ? state.answers.focuses[0] : '';
-  if (['Calves', 'Arms'].includes(singleFocus)) count = Math.min(count, 4);
-
+  if (['Calves', 'Arms'].includes(singleFocus)) count = Math.min(count, 5);
   if (state.answers.intensity === 'Easier') count = Math.max(Math.min(focuses.length, 4), count - 1);
-  if (state.answers.intensity === 'Harder' && minutes >= 40) count += 1;
   return Math.min(count, 8);
 }
 
-function buildTimeNote(resolvedFocuses) {
+function getWarmupMinutes(minutes, focuses) {
+  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return 2;
+  return minutes <= 20 ? 3 : minutes <= 35 ? 4 : 5;
+}
+
+function getCooldownMinutes(minutes, focuses) {
+  if (focuses.length === 1 && focuses[0] === 'Mobility + recovery') return 2;
+  return minutes <= 20 ? 2 : 3;
+}
+
+function buildTimeNote(resolvedFocuses, estimatedMinutes) {
   if (state.answers.time <= 20 && resolvedFocuses.length >= 3) {
-    return 'Form kept the highest-value movements and reduced working sets to fit the shorter session.';
+    return 'Form kept the highest-value movements and adjusted working sets to fit the shorter session.';
+  }
+  if (Math.abs(estimatedMinutes - state.answers.time) >= 5) {
+    return `This session is estimated at about ${estimatedMinutes} minutes based on its sets and rest periods.`;
   }
   return '';
 }
-
-const compoundExerciseIds = new Set([
-  'barbell-hip-thrust', 'reverse-lunge', 'dumbbell-reverse-lunge', 'step-up',
-  'goblet-squat', 'barbell-back-squat', 'leg-press', 'split-squat',
-  'dumbbell-split-squat', 'dumbbell-rdl', 'barbell-rdl', 'one-arm-row',
-  'chest-supported-row', 'lat-pulldown', 'seated-cable-row', 'pushup',
-  'dumbbell-floor-press', 'dumbbell-bench-press', 'machine-chest-press',
-  'seated-shoulder-press', 'landmine-press', 'pallof-press', 'band-pallof-press'
-]);
 
 function rankedForFocus(items, focus) {
   return items
@@ -1331,34 +1408,54 @@ function rankedForFocus(items, focus) {
 function balancedPick(eligible, focuses, desiredCount) {
   const selected = [];
   const used = new Set();
+  const usedFamilies = new Set();
   const queues = focuses.map(focus => ({
     focus,
     items: rankedForFocus(eligible, focus)
   }));
 
-  let madeProgress = true;
-  while (selected.length < desiredCount && madeProgress) {
-    madeProgress = false;
-    for (const queue of queues) {
-      const next = queue.items.find(item => !used.has(item.id));
-      if (next && selected.length < desiredCount) {
-        selected.push(next);
-        used.add(next.id);
-        madeProgress = true;
-      }
-    }
+  function add(item) {
+    selected.push(item);
+    used.add(item.id);
+    usedFamilies.add(item.family);
   }
 
-  if (selected.length < desiredCount) {
-    const focusSet = new Set(focuses);
-    const remaining = eligible
-      .filter(item => !used.has(item.id) && item.focuses.some(focus => focusSet.has(focus)))
-      .sort((a, b) => exercisePriority(b, focuses[0]) - exercisePriority(a, focuses[0]));
-    for (const item of remaining) {
-      selected.push(item);
-      used.add(item.id);
-      if (selected.length >= desiredCount) break;
+  // First cover each requested area. If an already-selected compound movement
+  // covers the area, do not add a redundant exercise just to satisfy the label.
+  for (const queue of queues) {
+    if (selected.length >= desiredCount) break;
+    if (selected.some(item => item.focuses.includes(queue.focus))) continue;
+    const next = queue.items.find(item => !used.has(item.id) && !usedFamilies.has(item.family))
+      || queue.items.find(item => !used.has(item.id));
+    if (next) add(next);
+  }
+
+  const focusSet = new Set(focuses);
+  const remaining = eligible
+    .filter(item => !used.has(item.id) && item.focuses.some(focus => focusSet.has(focus)))
+    .sort((a, b) => {
+      const familyPenaltyA = usedFamilies.has(a.family) ? 2.5 : 0;
+      const familyPenaltyB = usedFamilies.has(b.family) ? 2.5 : 0;
+      return (exercisePriority(b, focuses[0]) - familyPenaltyB) - (exercisePriority(a, focuses[0]) - familyPenaltyA);
+    });
+
+  for (const item of remaining) {
+    if (selected.length >= desiredCount) break;
+    // Prefer movement-family variety while enough alternatives remain.
+    if (usedFamilies.has(item.family)) {
+      const diverseAlternative = remaining.find(other =>
+        !used.has(other.id) && !usedFamilies.has(other.family) && other.focuses.some(focus => focusSet.has(focus))
+      );
+      if (diverseAlternative) continue;
     }
+    add(item);
+  }
+
+  // If family diversity caused an earlier candidate to be skipped, fill any
+  // remaining slots only after the diverse options have been considered.
+  for (const item of remaining) {
+    if (selected.length >= desiredCount) break;
+    if (!used.has(item.id)) add(item);
   }
 
   return selected.slice(0, desiredCount);
@@ -1368,7 +1465,8 @@ function exercisePriority(item, focus) {
   let score = 0;
   if (item.focuses[0] === focus) score += 3;
   if (item.kind === 'strength') score += 2;
-  if (compoundExerciseIds.has(item.id)) score += 4;
+  if (item.role === 'compound') score += 4;
+  if (['Build muscle', 'Get stronger'].includes(state.answers.goal) && item.tracking === 'weight') score += 1;
   if (state.profile.musclePriorities.some(priority => item.focuses.includes(priority))) score += 1.25;
   if (recentExerciseIds().has(item.id)) score -= 1.25;
   score -= (state.behavior.exerciseRejects[item.id] || 0) * 1.5;
@@ -1388,65 +1486,247 @@ function recentExerciseIds() {
 }
 
 function getBasePrescription() {
-  const base = {
-    'Lose fat / get leaner': { sets: 3, reps: '10–15', rest: 45 },
-    'Build muscle': { sets: 3, reps: '8–12', rest: 75 },
-    'Maintain': { sets: 3, reps: '8–12', rest: 60 },
-    'Get stronger': { sets: 4, reps: '5–8', rest: 120 },
-    'General fitness': { sets: 3, reps: '8–12', rest: 60 }
-  }[state.answers.goal];
-
-  const result = { ...base };
-
-  if (state.answers.time <= 20) {
-    result.sets = state.answers.focuses.length >= 3 ? 1 : 2;
-    result.rest = Math.min(result.rest, state.answers.goal === 'Get stronger' ? 90 : 60);
-  } else if (state.answers.time <= 30) {
-    result.sets = Math.min(result.sets, 3);
-  }
-
-  if (state.answers.experience === 'Beginner') result.sets = Math.min(result.sets, 3);
-  if (state.answers.intensity === 'Easier') result.sets = Math.max(1, result.sets - 1);
-  if (state.answers.intensity === 'Harder' && state.answers.time >= 40) result.sets += 1;
-
-  return result;
+  // These are broad defaults only. prescribeExercise() further adjusts by
+  // exercise role so a heavy compound and a small accessory are not treated alike.
+  return {
+    goal: state.answers.goal,
+    experience: state.answers.experience,
+    intensity: state.answers.intensity,
+    time: state.answers.time
+  };
 }
 
-function prescribeExercise(item, base, index) {
-  let sets = base.sets;
-  let reps = base.reps;
-  let rest = base.rest;
+function strengthPrescription(item, base) {
+  const compound = item.role === 'compound';
+  const accessoryHighRep = ['shoulder-accessory', 'elbow-flexion', 'elbow-extension', 'calf-raise', 'hip-abduction', 'chest-fly'].includes(item.family);
+  let sets = 3;
+  let reps = compound ? '6–10' : (accessoryHighRep ? '10–15' : '8–12');
+  let rest = compound ? 105 : 75;
 
-  if (item.kind === 'mobility') {
-    sets = 2;
-    reps = '6–8 / side';
-    rest = 20;
-  } else if (item.kind === 'cardio') {
-    sets = state.answers.time <= 25 ? 5 : 7;
-    reps = '40 sec';
-    rest = 30;
-  } else if (item.kind === 'time') {
-    reps = state.answers.goal === 'Get stronger' ? '30–45 sec' : '25–40 sec';
-  } else if (index > 2 && state.answers.time <= 30) {
-    sets = Math.max(2, sets - 1);
+  if (base.goal === 'Get stronger') {
+    if (compound) {
+      sets = base.experience === 'Beginner' ? 3 : 4;
+      reps = '4–6';
+      rest = base.experience === 'Advanced' ? 180 : base.experience === 'Intermediate' ? 150 : 120;
+    } else {
+      sets = 2;
+      reps = accessoryHighRep ? '10–15' : '8–12';
+      rest = 75;
+    }
+  } else if (base.goal === 'Build muscle') {
+    sets = compound ? 3 : 3;
+    reps = compound ? '6–12' : (accessoryHighRep ? '10–15' : '8–15');
+    rest = compound ? 120 : 75;
+  } else if (base.goal === 'Lose fat / get leaner') {
+    // Fat-loss goals do not require turning every resistance exercise into a
+    // short-rest, high-rep circuit. Keep the lifting productive and sustainable.
+    sets = compound ? 3 : 2;
+    reps = compound ? '6–12' : (accessoryHighRep ? '10–15' : '8–15');
+    rest = compound ? 90 : 60;
+  } else if (base.goal === 'Maintain') {
+    sets = compound ? 3 : 2;
+    reps = compound ? '6–12' : (accessoryHighRep ? '10–15' : '8–15');
+    rest = compound ? 90 : 60;
+  } else {
+    sets = compound ? 3 : 2;
+    reps = compound ? '6–12' : (accessoryHighRep ? '10–15' : '8–15');
+    rest = compound ? 90 : 60;
   }
 
-  const performance = getPreviousPerformance(item, reps);
-  const prefillWeight = performance?.recommendedWeight ?? performance?.lastWeight ?? '';
+  if (item.unilateral && !reps.includes('/ side')) reps = `${reps} / side`;
+  if (base.experience === 'Beginner') sets = Math.min(sets, 3);
+  if (base.intensity === 'Easier') sets = Math.max(1, sets - 1);
+  if (base.intensity === 'Harder' && base.time >= 40) sets += 1;
+
+  return { sets, reps, rest };
+}
+
+function cardioPrescription(item, activeMinutes) {
+  const minutes = Math.max(8, Math.round(activeMinutes));
+  return { sets: 1, reps: `${minutes} min`, rest: 0 };
+}
+
+function mobilityPrescription(item, base) {
+  const staticHold = /stretch|child-pose|side-bend/.test(item.id);
+  const sideToSide = /9090|thoracic-rotation|hamstring-sweep|ankle-rock/.test(item.id);
+  const reps = staticHold ? '30–45 sec / side' : (sideToSide ? '6–8 / side' : '6–8 slow reps');
+  let sets = base.time <= 30 ? 2 : 3;
+  if (base.intensity === 'Easier') sets = Math.max(1, sets - 1);
+  if (base.intensity === 'Harder' && base.time >= 40) sets += 1;
+  return { sets, reps, rest: 0 };
+}
+
+function timePrescription(item, base) {
+  let sets = base.time <= 20 ? 2 : 3;
+  if (base.intensity === 'Easier') sets = Math.max(1, sets - 1);
+  if (base.intensity === 'Harder' && base.time >= 40) sets += 1;
+  return { sets, reps: '25–40 sec', rest: 60 };
+}
+
+function prescribeExercise(item, base, index, totalExercises, warmup, cooldown) {
+  const activeMinutes = Math.max(5, state.answers.time - warmup - cooldown);
+  let prescribed;
+
+  if (item.kind === 'mobility') prescribed = mobilityPrescription(item, base);
+  else if (item.kind === 'cardio') prescribed = cardioPrescription(item, activeMinutes / Math.max(1, totalExercises));
+  else if (item.kind === 'time') prescribed = timePrescription(item, base);
+  else prescribed = strengthPrescription(item, base);
+
+  if (index > 2 && state.answers.time <= 30 && item.kind === 'strength') {
+    prescribed.sets = Math.max(1, prescribed.sets - 1);
+  }
+
+  const performance = getPreviousPerformance(item, prescribed.reps);
+  const prefillWeight = item.tracking === 'weight'
+    ? (performance?.recommendedWeight ?? performance?.lastWeight ?? '')
+    : '';
 
   return {
     ...item,
-    sets,
-    reps,
-    rest,
+    ...prescribed,
     previousPerformance: performance?.summary || '',
     recommendedWeight: performance?.recommendedWeight || '',
-    setData: Array.from({ length: sets }, () => ({
-      weight: item.kind === 'strength' ? String(prefillWeight || '') : '',
+    setData: Array.from({ length: prescribed.sets }, () => ({
+      weight: item.tracking === 'weight' ? String(prefillWeight || '') : '',
       reps: '',
       done: false
     }))
   };
+}
+
+function parseRepMidpoint(value) {
+  const numbers = String(value).match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
+  if (!numbers.length) return 10;
+  return numbers.length >= 2 ? (numbers[0] + numbers[1]) / 2 : numbers[0];
+}
+
+function estimateExerciseSeconds(item) {
+  const setupSeconds = item.kind === 'strength'
+    ? (item.tracking === 'weight' ? 40 : 20)
+    : item.kind === 'cardio' ? 20 : 12;
+
+  if (item.kind === 'cardio') {
+    const minutes = parseRepMidpoint(item.reps);
+    return setupSeconds + minutes * 60;
+  }
+
+  let workPerSet;
+  if (item.kind === 'mobility') {
+    workPerSet = String(item.reps).includes('/ side') ? 70 : 45;
+  } else if (item.kind === 'time') {
+    workPerSet = parseRepMidpoint(item.reps);
+  } else {
+    const reps = parseRepMidpoint(item.reps);
+    const repCount = item.unilateral ? reps * 2 : reps;
+    workPerSet = Math.max(20, repCount * 3.2);
+  }
+
+  const rests = Math.max(0, item.sets - 1) * item.rest;
+  return setupSeconds + (item.sets * workPerSet) + rests;
+}
+
+function estimateWorkoutMinutes(exercises, warmup, cooldown) {
+  const exerciseSeconds = exercises.reduce((sum, item) => sum + estimateExerciseSeconds(item), 0);
+  const transitionSeconds = Math.max(0, exercises.length - 1) * 20;
+  return Math.max(1, Math.round(warmup + cooldown + (exerciseSeconds + transitionSeconds) / 60));
+}
+
+function minimumSetsFor(item, focuses) {
+  if (item.kind === 'cardio' || item.kind === 'mobility') return 1;
+  if (state.answers.time <= 20 && focuses.length >= 3) return 1;
+  return 2;
+}
+
+function maximumSetsFor(item) {
+  if (item.kind === 'cardio' || item.kind === 'mobility') return 1;
+  if (item.role === 'compound' && state.answers.goal === 'Get stronger') return 5;
+  if (item.role === 'compound') return 4;
+  return 3;
+}
+
+function resizeSetData(item, sets) {
+  const existing = Array.isArray(item.setData) ? item.setData : [];
+  const seedWeight = existing[0]?.weight || '';
+  item.sets = sets;
+  item.setData = Array.from({ length: sets }, (_, index) => existing[index] || {
+    weight: item.tracking === 'weight' ? seedWeight : '',
+    reps: '',
+    done: false
+  });
+}
+
+function focusWouldBeLost(exercises, removeIndex, focuses) {
+  const remaining = exercises.filter((_, index) => index !== removeIndex);
+  return focuses.some(focus =>
+    exercises[removeIndex].focuses.includes(focus) && !remaining.some(item => item.focuses.includes(focus))
+  );
+}
+
+function fitWorkoutToTime(exercises, targetMinutes, warmup, cooldown, focuses) {
+  const fitted = exercises.map(item => ({ ...item, setData: item.setData.map(set => ({ ...set })) }));
+  const upperTarget = targetMinutes + 2;
+  const lowerTarget = Math.max(8, targetMinutes - 4);
+
+  // First reduce lower-priority accessory volume before deleting movements.
+  let guard = 0;
+  while (estimateWorkoutMinutes(fitted, warmup, cooldown) > upperTarget && guard++ < 50) {
+    let changed = false;
+    for (let index = fitted.length - 1; index >= 0; index--) {
+      const item = fitted[index];
+      const minimum = minimumSetsFor(item, focuses);
+      if (item.sets > minimum && (item.role === 'accessory' || index >= 2)) {
+        resizeSetData(item, item.sets - 1);
+        changed = true;
+        break;
+      }
+    }
+    if (changed) continue;
+
+    for (let index = fitted.length - 1; index >= 0; index--) {
+      if (fitted.length <= 1) break;
+      if (!focusWouldBeLost(fitted, index, focuses)) {
+        fitted.splice(index, 1);
+        changed = true;
+        break;
+      }
+    }
+    if (changed) continue;
+
+    for (let index = fitted.length - 1; index >= 0; index--) {
+      const item = fitted[index];
+      const minimum = minimumSetsFor(item, focuses);
+      if (item.sets > minimum) {
+        resizeSetData(item, item.sets - 1);
+        changed = true;
+        break;
+      }
+    }
+    if (!changed) break;
+  }
+
+  // If there is meaningful unused time, add productive volume to the highest-value
+  // movements rather than adding filler exercises.
+  guard = 0;
+  while (estimateWorkoutMinutes(fitted, warmup, cooldown) < lowerTarget && guard++ < 20) {
+    const candidate = fitted.find(item => item.sets < maximumSetsFor(item) && item.kind !== 'cardio' && item.kind !== 'mobility');
+    if (!candidate) break;
+    const before = candidate.sets;
+    resizeSetData(candidate, before + 1);
+    if (estimateWorkoutMinutes(fitted, warmup, cooldown) > upperTarget) {
+      resizeSetData(candidate, before);
+      break;
+    }
+  }
+
+  // A single cardio modality should fill the active time budget directly.
+  if (fitted.length === 1 && fitted[0].kind === 'cardio') {
+    const activeMinutes = Math.max(8, targetMinutes - warmup - cooldown);
+    fitted[0].reps = `${Math.round(activeMinutes)} min`;
+    fitted[0].sets = 1;
+    resizeSetData(fitted[0], 1);
+  }
+
+  return fitted;
 }
 
 function getPreviousPerformance(item, currentRepRange) {
@@ -1456,33 +1736,50 @@ function getPreviousPerformance(item, currentRepRange) {
   const completed = (record.detail.sets || []).filter(set => set.done);
   if (!completed.length) return null;
 
-  const weighted = completed.filter(set => Number(set.weight) > 0);
-  const lastWeighted = weighted.at(-1);
-  const repValues = completed.map(set => Number(set.reps)).filter(Number.isFinite);
-  const bestReps = repValues.length ? Math.max(...repValues) : null;
-  const lastWeight = lastWeighted ? Number(lastWeighted.weight) : null;
+  // Keep the displayed load and reps tied to the same actual set. v3.0 could
+  // accidentally combine the last weight with the best reps from another set.
+  const lastCompleted = completed.at(-1);
+  const lastWeight = item.tracking === 'weight' && Number(lastCompleted?.weight) > 0
+    ? Number(lastCompleted.weight)
+    : null;
+  const lastReps = Number(lastCompleted?.reps);
 
   let summary = '';
-  if (lastWeight && bestReps) summary = `${formatNumber(lastWeight)} lb × ${bestReps}`;
-  else if (bestReps) summary = `${bestReps} reps`;
+  if (lastWeight && Number.isFinite(lastReps)) summary = `${formatNumber(lastWeight)} lb × ${lastReps}`;
+  else if (item.tracking === 'band' && lastCompleted?.weight && Number.isFinite(lastReps)) summary = `${lastCompleted.weight} band × ${lastReps}`;
+  else if (Number.isFinite(lastReps)) summary = `${lastReps} reps`;
   else if (lastWeight) summary = `${formatNumber(lastWeight)} lb`;
+  else if (item.tracking === 'band' && lastCompleted?.weight) summary = `${lastCompleted.weight} band`;
+  else if (lastCompleted?.reps) summary = String(lastCompleted.reps);
 
   let recommendedWeight = null;
   const upper = repRangeUpper(currentRepRange);
-  const allAtTop = upper && completed.length && completed.every(set => Number(set.reps) >= upper);
+  const weighted = completed.filter(set => Number(set.weight) > 0 && Number.isFinite(Number(set.reps)));
+  const weights = weighted.map(set => Number(set.weight));
+  const workingWeight = weights.length ? modeWeight(weights) : null;
+  const workingSets = workingWeight
+    ? weighted.filter(set => Number(set.weight) === workingWeight)
+    : [];
+  const allAtTop = upper && workingSets.length >= Math.min(2, completed.length) && workingSets.every(set => Number(set.reps) >= upper);
   const hardLastTime = record.workout.feedback === 'Too hard';
 
-  if (lastWeight && allAtTop && !hardLastTime) {
+  if (item.tracking === 'weight' && workingWeight && allAtTop && !hardLastTime) {
     const increment = progressionIncrement(item);
-    recommendedWeight = roundToIncrement(lastWeight + increment, increment);
+    recommendedWeight = roundToIncrement(workingWeight + increment, increment);
   }
 
   return {
     summary,
-    lastWeight,
-    bestReps,
+    lastWeight: workingWeight || lastWeight,
+    lastReps: Number.isFinite(lastReps) ? lastReps : null,
     recommendedWeight
   };
+}
+
+function modeWeight(values) {
+  const counts = new Map();
+  values.forEach(value => counts.set(value, (counts.get(value) || 0) + 1));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || values.lastIndexOf(b[0]) - values.lastIndexOf(a[0]))[0]?.[0] || null;
 }
 
 function findLastExerciseRecord(id, name) {
@@ -1503,7 +1800,7 @@ function repRangeUpper(value) {
 function progressionIncrement(item) {
   if (
     item.role === 'accessory' ||
-    ['shoulder-accessory', 'elbow-flexion', 'elbow-extension', 'calf-raise'].includes(item.family)
+    ['shoulder-accessory', 'elbow-flexion', 'elbow-extension', 'calf-raise', 'hip-abduction', 'chest-fly'].includes(item.family)
   ) {
     return 2.5;
   }
@@ -1540,6 +1837,12 @@ function formatList(items) {
   if (items.length <= 1) return items[0] || '';
   if (items.length === 2) return `${items[0]} + ${items[1]}`;
   return `${items.slice(0, -1).join(', ')} + ${items.at(-1)}`;
+}
+
+function prescriptionText(item) {
+  const sets = `${item.sets} ${item.sets === 1 ? 'set' : 'sets'}`;
+  if (!item.rest) return `${sets} · ${item.reps}`;
+  return `${sets} · ${item.reps} · ${item.rest}s rest`;
 }
 
 function showWorkout() {
@@ -1597,7 +1900,7 @@ function exercisePreview(item, index) {
     <div class="exercise-main">
       <div class="exercise-number">${String(index + 1).padStart(2, '0')} · ${escapeHtml(item.muscle)}</div>
       <div class="exercise-name">${escapeHtml(item.name)}</div>
-      <div class="exercise-prescription">${item.sets} ${item.sets === 1 ? 'set' : 'sets'} · ${escapeHtml(item.reps)} · ${item.rest}s rest</div>
+      <div class="exercise-prescription">${escapeHtml(prescriptionText(item))}</div>
       ${item.previousPerformance ? `<div class="previous-line">Last time: ${escapeHtml(item.previousPerformance)}</div>` : ''}
       ${item.recommendedWeight ? `<div class="suggestion-line">Try ${escapeHtml(formatNumber(Number(item.recommendedWeight)))} lb today</div>` : ''}
     </div>
@@ -1639,17 +1942,22 @@ function findSwap(index) {
 }
 
 function replacementWithSamePrescription(replacement, current) {
-  const performance = getPreviousPerformance(replacement, current.reps);
+  let replacementReps = current.reps;
+  if (replacement.kind === 'strength' && replacement.unilateral && !replacementReps.includes('/ side')) replacementReps += ' / side';
+  if (replacement.kind === 'strength' && !replacement.unilateral) replacementReps = replacementReps.replace(/\s*\/ side/i, '');
+  const performance = getPreviousPerformance(replacement, replacementReps);
   const prefillWeight = performance?.recommendedWeight ?? performance?.lastWeight ?? '';
   return {
     ...replacement,
     sets: current.sets,
-    reps: current.reps,
+    reps: replacementReps,
     rest: current.rest,
     previousPerformance: performance?.summary || '',
     recommendedWeight: performance?.recommendedWeight || '',
+    tracking: replacement.tracking,
+    unilateral: replacement.unilateral,
     setData: Array.from({ length: current.sets }, () => ({
-      weight: replacement.kind === 'strength' ? String(prefillWeight || '') : '',
+      weight: replacement.tracking === 'weight' ? String(prefillWeight || '') : '',
       reps: '',
       done: false
     }))
@@ -1682,13 +1990,35 @@ function swapExercise(index) {
   showWorkout();
 }
 
+const howToOverrides = {
+  'barbell-hip-thrust': ['Set your upper back against the bench and plant your feet.', 'Drive through the full foot until the hips are fully extended.', 'Keep the ribs down and avoid finishing by arching the lower back.'],
+  'goblet-squat': ['Hold the dumbbell close to your chest and brace.', 'Sit down between the hips while keeping the whole foot planted.', 'Let the knees track with the toes and stand through the floor.'],
+  'barbell-back-squat': ['Brace before you descend and keep your feet planted.', 'Sit down under control while the knees track with the toes.', 'Use the deepest range you can control without losing trunk position.'],
+  'dumbbell-rdl': ['Start tall with soft knees and the weights close to your thighs.', 'Push the hips back while keeping the weights close to your legs.', 'Stop when the hamstrings are loaded, then drive the hips forward to stand.'],
+  'barbell-rdl': ['Start tall with soft knees and the bar close to your thighs.', 'Push the hips back while keeping the bar close to your legs.', 'Stop when the hamstrings are loaded and keep the spine neutral.'],
+  'conventional-deadlift': ['Set the bar close to your shins and brace before pulling.', 'Push the floor away while keeping the bar close to the body.', 'Stand tall at the top without leaning backward.'],
+  'dumbbell-bench-press': ['Plant your feet and keep the shoulder blades supported by the bench.', 'Lower the dumbbells under control with the forearms nearly vertical.', 'Press up without letting the shoulders roll forward.'],
+  'barbell-bench-press': ['Plant your feet and set the shoulder blades against the bench.', 'Lower the bar under control with the forearms nearly vertical.', 'Press the bar up while keeping your upper back stable.'],
+  'one-arm-row': ['Support yourself so the torso stays steady.', 'Pull the elbow toward the hip without twisting the body.', 'Lower the weight under control until the shoulder can reach naturally.'],
+  'lat-pulldown': ['Sit tall and secure the thighs under the pad.', 'Pull the elbows down toward your sides instead of yanking with the hands.', 'Control the return and avoid leaning far backward.'],
+  'seated-shoulder-press': ['Sit tall with the ribs stacked over the pelvis.', 'Press the dumbbells overhead through a comfortable path.', 'Avoid turning the last part of the press into a backbend.'],
+  'reverse-lunge': ['Stand tall and step one foot back far enough to stay balanced.', 'Lower under control while keeping the front foot planted.', 'Drive through the front foot to return to standing.'],
+  'dumbbell-reverse-lunge': ['Hold the weights at your sides and step back softly.', 'Keep the front foot planted and lower under control.', 'Drive through the front foot to return to standing.'],
+  'dumbbell-bulgarian-split-squat': ['Set the front foot far enough forward to stay balanced.', 'Lower mostly straight down while keeping the front foot planted.', 'Drive through the front foot and use the rear leg mainly for support.'],
+  'pushup': ['Brace the body in one straight line from shoulders to heels.', 'Lower the chest under control with the elbows at a comfortable angle.', 'Press the floor away without letting the hips sag.'],
+  'forearm-plank': ['Place the elbows under the shoulders and brace the trunk.', 'Squeeze the glutes and keep the ribs down.', 'Stop the set when you can no longer keep the back from sagging.'],
+  'dead-bug': ['Lie on your back and gently keep the lower back supported.', 'Move the opposite arm and leg only as far as you can stay braced.', 'Return slowly and repeat without letting the ribs flare.'],
+  'pallof-press': ['Stand or kneel sideways to the cable and brace your trunk.', 'Press the handle straight away from your chest.', 'Resist rotation and return the handle slowly.']
+};
+
 function showTip(index) {
   const item = state.workout.exercises[index];
-  const cues = cueSteps(item.cue);
+  const cues = howToOverrides[item.id] || cueSteps(item.cue);
   showModal(
     item.name,
     '',
     `<ol class="cue-list">${cues.map(cue => `<li>${escapeHtml(cue)}</li>`).join('')}</ol>
+     ${item.video ? `<button class="secondary-button field-gap-small" onclick="openExerciseVideo('${escapeJs(item.video)}')">Watch demo</button>` : ''}
      <div class="modal-actions">
        <button class="primary-button" onclick="closeCurrentModal()">Done</button>
      </div>`
@@ -1699,6 +2029,11 @@ function cueSteps(cue) {
   const clean = String(cue).replace(/\.$/, '');
   const parts = clean.split(/,\s+|\s+and\s+/i).map(part => part.trim()).filter(Boolean);
   return parts.slice(0, 3).map(part => part.charAt(0).toUpperCase() + part.slice(1));
+}
+
+function openExerciseVideo(url) {
+  if (!url) return;
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function confirmRegenerate() {
@@ -1767,7 +2102,7 @@ function renderActive() {
         <div>
           <div class="eyebrow">Exercise ${state.activeIndex + 1} of ${state.workout.exercises.length}</div>
           <h2>${escapeHtml(item.name)}</h2>
-          <p class="workout-meta">${escapeHtml(item.reps)} · ${item.rest}s rest</p>
+          <p class="workout-meta">${escapeHtml(prescriptionText(item))}</p>
         </div>
       </div>
       ${item.previousPerformance ? `<div class="previous-line">Last time: ${escapeHtml(item.previousPerformance)}</div>` : ''}
@@ -1777,7 +2112,7 @@ function renderActive() {
         <button class="pill-button" ${findSwap(state.activeIndex) ? '' : 'disabled'} onclick="swapActive()">Swap</button>
       </div>
       <div class="set-label-row">
-        <span>Set</span><span>${item.kind === 'strength' ? 'Weight' : 'Level'}</span><span>${item.kind === 'time' || item.kind === 'cardio' ? 'Time' : 'Reps'}</span><span>Done</span>
+        <span>Set</span><span>${loadColumnLabel(item)}</span><span>${repColumnLabel(item)}</span><span>Done</span>
       </div>
       <div>${item.setData.map((set, index) => setRow(index, set, item)).join('')}</div>
     </section>
@@ -1789,21 +2124,61 @@ function renderActive() {
   updateTimers();
 }
 
+function loadColumnLabel(item) {
+  if (item.tracking === 'weight') return 'Weight';
+  if (item.tracking === 'band') return 'Band';
+  if (item.kind === 'cardio') return 'Effort';
+  return 'Load';
+}
+
+function repColumnLabel(item) {
+  return item.kind === 'time' || item.kind === 'cardio' || (item.kind === 'mobility' && String(item.reps).includes('sec')) ? 'Time' : 'Reps';
+}
+
+function setLoadControl(index, set, item) {
+  if (item.tracking === 'bodyweight') {
+    return '<div class="set-static" aria-label="Bodyweight">BW</div>';
+  }
+  if (item.tracking === 'none') {
+    return '<div class="set-static" aria-label="No load needed">—</div>';
+  }
+  if (item.tracking === 'band') {
+    return `<input
+      inputmode="text"
+      value="${escapeHtml(set.weight)}"
+      placeholder="Band"
+      aria-label="Band or resistance for set ${index + 1}"
+      oninput="updateSetValue(${index}, 'weight', this.value)"
+    />`;
+  }
+  if (item.kind === 'cardio') {
+    return `<input
+      inputmode="text"
+      value="${escapeHtml(set.weight)}"
+      placeholder="Easy–hard"
+      aria-label="Effort for set ${index + 1}"
+      oninput="updateSetValue(${index}, 'weight', this.value)"
+    />`;
+  }
+  return `<input
+    inputmode="decimal"
+    value="${escapeHtml(set.weight)}"
+    placeholder="lb"
+    aria-label="Weight for set ${index + 1}"
+    oninput="updateSetValue(${index}, 'weight', this.value)"
+  />`;
+}
+
 function setRow(index, set, item) {
+  const timeEntry = item.kind === 'time' || item.kind === 'cardio' || (item.kind === 'mobility' && String(item.reps).includes('sec'));
   return `<div class="set-row">
     <div style="font-weight:780;text-align:center">${index + 1}</div>
+    ${setLoadControl(index, set, item)}
     <input
-      inputmode="decimal"
-      value="${escapeHtml(set.weight)}"
-      placeholder="${item.kind === 'strength' ? 'lb' : 'Easy'}"
-      aria-label="${item.kind === 'strength' ? 'Weight' : 'Effort level'} for set ${index + 1}"
-      oninput="updateSetValue(${index}, 'weight', this.value)"
-    />
-    <input
-      inputmode="${item.kind === 'strength' ? 'numeric' : 'text'}"
+      inputmode="${timeEntry ? 'text' : 'numeric'}"
       value="${escapeHtml(set.reps)}"
-      placeholder="${item.kind === 'strength' ? 'Reps' : item.reps}"
-      aria-label="${item.kind === 'strength' ? 'Repetitions' : 'Time'} for set ${index + 1}"
+      placeholder="${timeEntry ? item.reps : 'Reps'}"
+      aria-label="${timeEntry ? 'Time' : 'Repetitions'} for set ${index + 1}"
       oninput="updateSetValue(${index}, 'reps', this.value)"
     />
     <button class="set-check ${set.done ? 'done' : ''}" aria-label="${set.done ? 'Mark set incomplete' : 'Mark set complete'}" onclick="toggleSet(${index})">${set.done ? '✓' : '○'}</button>
@@ -1938,6 +2313,10 @@ function finishWorkout() {
     (sum, item) => sum + item.setData.filter(set => set.done).length,
     0
   );
+  const completedExercises = state.workout.exercises.filter(item => item.setData.some(set => set.done)).length;
+  const prescribedSets = state.workout.exercises.reduce((sum, item) => sum + item.sets, 0);
+  const qualifiesForPlanAdvance = completedExercises >= Math.max(1, Math.ceil(state.workout.exercises.length / 2))
+    && completedSets >= Math.max(1, Math.ceil(prescribedSets / 2));
 
   const record = {
     id: `history-${Date.now()}`,
@@ -1946,6 +2325,9 @@ function finishWorkout() {
     minutes: Math.max(1, Math.round(state.session.elapsedMs / 60000)),
     exercises: state.workout.exercises.length,
     completedSets,
+    completedExercises,
+    prescribedSets,
+    planAdvanced: state.workout.source === 'plan' ? qualifiesForPlanAdvance : null,
     focuses: [...state.workout.focuses],
     source: state.workout.source,
     feedback: 'Not rated',
@@ -1958,6 +2340,8 @@ function finishWorkout() {
       pattern: item.pattern,
       muscle: item.muscle,
       kind: item.kind,
+      tracking: item.tracking,
+      unilateral: Boolean(item.unilateral),
       prescription: {
         sets: item.sets,
         reps: item.reps,
@@ -1973,6 +2357,7 @@ function finishWorkout() {
 
   if (
     state.workout.source === 'plan' &&
+    qualifiesForPlanAdvance &&
     Number(state.workout.planIndex) === Number(state.profile.splitIndex)
   ) {
     state.profile.splitIndex = (state.profile.splitIndex + 1) % state.profile.splitSequence.length;
@@ -2007,6 +2392,7 @@ function renderCompletion(id) {
       <div class="eyebrow">Complete</div>
       <h1>Nicely done.</h1>
       <p class="lede">${record.minutes} minutes · ${record.completedSets} completed sets</p>
+      ${record.source === 'plan' && record.planAdvanced === false ? '<p class="inline-note">Saved as a partial workout. Your training plan will keep this session next so you can continue the sequence.</p>' : ''}
     </section>
     <section class="card">
       <h2 class="question-title" style="font-size:28px">How did that feel?</h2>
@@ -2119,6 +2505,9 @@ function showHistoryDetail(id) {
 
 function historyExercise(detail, index) {
   const completed = (detail.sets || []).filter(set => set.done);
+  const sourceExercise = exerciseLibrary.find(item => item.id === detail.id || (!detail.id && item.name === detail.name));
+  const tracking = detail.tracking || sourceExercise?.tracking || 'weight';
+  const kind = detail.kind || sourceExercise?.kind || 'strength';
   return `<article class="exercise-card">
     <div class="exercise-main">
       <div class="exercise-number">${String(index + 1).padStart(2, '0')} · ${escapeHtml(detail.muscle || detail.pattern || '')}</div>
@@ -2127,8 +2516,14 @@ function historyExercise(detail, index) {
       ${completed.length
         ? `<div class="set-summary-list">${completed.map((set, setIndex) => {
             const pieces = [];
-            if (set.weight) pieces.push(`${escapeHtml(set.weight)} lb`);
-            if (set.reps) pieces.push(`${escapeHtml(set.reps)} reps`);
+            if (set.weight) {
+              if (tracking === 'weight') pieces.push(`${escapeHtml(set.weight)} lb`);
+              else if (tracking === 'band') pieces.push(`${escapeHtml(set.weight)} band`);
+              else if (kind === 'cardio') pieces.push(`${escapeHtml(set.weight)} effort`);
+            } else if (tracking === 'bodyweight') {
+              pieces.push('Bodyweight');
+            }
+            if (set.reps) pieces.push(escapeHtml(set.reps) + (kind === 'strength' ? ' reps' : ''));
             return `<div><span>Set ${setIndex + 1}</span><strong>${pieces.join(' × ') || 'Completed'}</strong></div>`;
           }).join('')}</div>`
         : '<p class="helper">No completed sets recorded.</p>'}

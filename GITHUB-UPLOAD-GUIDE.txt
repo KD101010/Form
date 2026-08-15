@@ -1,32 +1,32 @@
-FORM V3.0 GITHUB UPLOAD GUIDE
+FORM V3.1 GITHUB UPLOAD GUIDE
 
 You are updating the SAME GitHub repository that already hosts Form.
-You do not need to create another repository or change the Pages settings.
+Do not create another repository and do not change the GitHub Pages settings.
 
-1. Download and extract the Form v3 ZIP on your computer.
+1. Download and extract the Form v3.1 ZIP on your computer.
 
 2. Open the extracted folder named:
-   form-github-v3
+   form-github-v3.1
 
-3. In your web browser, open the existing GitHub repository that hosts Form.
+3. In your web browser, open the existing GitHub repository that already hosts Form.
 
 4. Click:
    Add file
    Upload files
 
-5. Drag EVERY file from inside the form-github-v3 folder into the GitHub upload box.
+5. Drag EVERY file from inside the form-github-v3.1 folder into the GitHub upload box.
 
    Important:
    - Upload the individual files.
    - Do not upload the ZIP itself.
-   - Do not drag the outer form-github-v3 folder as a nested folder.
-   - index.html must remain at the repository root.
+   - Do not drag the outer form-github-v3.1 folder as a nested folder.
+   - index.html must remain visible at the repository root.
 
-6. GitHub will show that several existing files are being replaced.
+6. GitHub will show that existing files are being replaced and that PROGRAMMING-NOTES.md is new.
    That is expected.
 
-7. Use this commit message:
-   Update Form to version 3.0
+7. Suggested commit message:
+   Update Form to v3.1 quality and intelligence release
 
 8. Choose:
    Commit directly to the main branch
@@ -38,24 +38,34 @@ You do not need to create another repository or change the Pages settings.
 
 VERIFY THE UPDATE
 
-1. Open the live Form address directly in Safari.
+1. Open the live Form website directly in Safari or your normal browser.
 2. Refresh the page.
-3. The first opening should show the new one-time setup.
-4. After setup, the Home screen should show a time-based greeting and Today's workout.
-5. Open the three-dot menu and confirm Profile, Training Plan, Equipment,
-   Preferences, History, About Me, and Help / Send Feedback are present.
+3. Open Form and confirm your existing profile and history are still present.
+4. Generate a 20-minute workout and confirm the set count and exercise count are compact.
+5. Generate a 45-minute workout and confirm the prescription uses the available time more fully.
+6. Open a bodyweight movement such as Push-up and confirm the load field shows BW instead of asking for pounds.
+7. Open a unilateral movement and confirm the rep prescription says / side when appropriate.
+8. Complete only a very small portion of a planned workout and confirm the plan does not advance.
+9. Complete at least half of both the planned exercises and prescribed sets, then confirm the plan advances.
+10. Check History and confirm weights, bodyweight, band entries, and cardio effort labels display appropriately.
+11. Tap How to on a common movement such as Romanian deadlift or dumbbell bench press and confirm the three-step instructions are clear.
 
 IF THE OLD VERSION STILL APPEARS
 
 1. Open the live website directly in Safari and refresh it.
 2. Fully close the installed Form app.
-3. Reopen it from the Home Screen.
-4. If it remains old, delete the Form Home Screen icon.
-5. Open the live website in Safari.
-6. Tap the three dots at the bottom-right.
-7. Tap Share.
-8. Tap View More at the bottom.
-9. Tap Add to Home Screen.
-10. Add Form again.
+3. Reopen Form from the Home Screen.
+4. If it still shows the old version, delete the Form Home Screen icon.
+5. Open the live website again.
+6. Refresh the live website.
+7. Tap the three dots at the bottom-right.
+8. Tap Share.
+9. Tap View More at the bottom.
+10. Tap Add to Home Screen.
+11. Confirm the name says Form and add it again.
 
-The approved F icon should appear in the Add to Home Screen preview.
+The approved Form F icon should appear in the Add to Home Screen preview.
+
+DATA NOTE
+
+Form v3.1 keeps the existing v3 browser-storage keys. Replacing the GitHub Pages files should not erase an existing user's v3 profile or workout history. Clearing Safari website data or using a different browser/device can still remove or separate that local data.

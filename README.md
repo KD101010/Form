@@ -1,39 +1,81 @@
-# Form Beta v3.0
+# Form Beta v3.1
 
 Form is a mobile-first workout app built to remove workout decision fatigue.
 
 **Simple on the surface. Thoughtful underneath.**
 
-## What is new in v3.0
+## What is new in v3.1
 
-- One-time onboarding for first name, goal, experience, normal schedule, equipment, limitations, muscle priorities, exercise dislikes, and training plan.
+### Smarter time-based programming
+
+- Workout generation now estimates the actual session time from warm-up, exercise setup, working sets, rest periods, transitions, and cooldown.
+- Short sessions reduce lower-priority volume before removing important movements.
+- If useful time remains, Form adds productive volume to higher-value movements instead of adding filler exercises.
+- Cardio-only sessions now use one clear modality for the available active time instead of several unrelated cardio movements.
+- Mobility sessions use purposeful rounds and avoid unnecessary rest timers.
+
+### More exercise-aware prescriptions
+
+- Strength compounds and accessories no longer receive the same rep and rest prescription just because they share the same goal.
+- Strength-focused plans use lower rep ranges and longer rest for compound lifts while keeping accessory work in more appropriate rep ranges.
+- Build-muscle programming uses broader evidence-informed rep ranges and longer rest for demanding compound work.
+- Fat-loss goals no longer force every resistance exercise into a short-rest, high-rep circuit.
+- Unilateral movements are labeled per side where appropriate.
+
+### Better exercise selection
+
+- Full-body and Pick for me choices now use actual recently completed exercises to estimate recent focus exposure.
+- Movement-family variety is preferred when building a session.
+- Loadable movements receive a modest preference for muscle-building and strength goals when the user's equipment allows them.
+- The structured exercise library was expanded from about 91 to more than 100 exercises.
+
+### Better tracking and progression
+
+- Bodyweight movements no longer ask the user to type pounds.
+- Band exercises can record a band or resistance description.
+- Cardio can record effort without pretending the value is a weight.
+- Previous-performance summaries now keep weight and reps tied to the same actual set.
+- Conservative load progression is only suggested when the recorded working sets support it.
+
+### Better plan integrity
+
+- A planned workout must now be meaningfully completed before the training sequence advances.
+- Very partial sessions are still saved to history, but the planned workout remains next in the sequence.
+
+### Better instructions
+
+- High-value common movements now use manually curated three-step How to instructions.
+- Other exercises keep the existing concise cue system.
+- Video support remains prepared in the data model but no unlicensed internet videos were added.
+
+## Existing v3 features preserved
+
+- One-time onboarding.
 - Time-based greeting using the user's first name.
-- A simple home screen with the next workout in the user's training sequence.
-- Training plans advance only when a planned workout is completed. Missing a day does not skip the sequence.
-- Daily goal, equipment, limitation, and energy questions were removed.
-- Optional **Adjust workout** controls for less time, easier/harder sessions, and temporary caution areas.
-- Profile, Training Plan, Equipment, Preferences, History, About Me, and Help / Send Feedback screens behind the three-dot menu.
-- Smarter exercise selection using equipment, experience, recent history, priorities, dislikes, limitations, and prior behavior.
-- Smarter swaps that move to a different exercise family instead of cycling through nearly identical variations.
-- Repeated swaps and skips quietly reduce how often those exercises are prescribed.
-- Prior weight and rep performance is remembered.
-- Previous performance is shown when useful.
-- Conservative weight progression can be suggested after completing the top of a rep range.
-- Completed workouts are tappable and show exercises, sets, reps, weights, swaps, and skipped exercises.
-- Body-weight entries are preserved as history rather than overwritten.
+- Sequence-based training plans.
+- Optional Adjust workout controls.
+- Profile, Training Plan, Equipment, Preferences, History, About Me, and Help / Send Feedback screens.
+- Smart swapping to a different movement family when possible.
+- Behavior learning from repeated swaps and skips.
+- Previous-performance recall and editable progression suggestions.
+- Resumable active workouts.
+- Tappable workout history.
+- Body-weight history.
 - Optional post-workout difficulty feedback.
-- Interrupted workouts remain resumable.
-- The rest timer disappears immediately when **Skip** is tapped.
-- A beta feedback action uses the iPhone share sheet when supported.
-- The approved Form F icon is included for iPhone Home Screen installation.
+- Immediate rest-timer dismissal when Skip is tapped.
+- Approved Form F Home Screen icon.
 
-## Existing user data
+## Data compatibility
 
-The update uses new v3 storage keys. Existing v2 workout history is automatically copied into the v3 history the first time the new version opens.
+Form v3.1 intentionally keeps the existing v3 localStorage keys. Existing v3 profiles, history, behavior data, and resumable workouts remain compatible.
 
-The one-time onboarding will still appear because the previous version did not have a complete user profile or training plan.
+Uploading the updated files to GitHub does not erase browser data. Clearing browser website data, switching browsers, or moving to another device can still remove or separate local data because Form does not yet use accounts or cloud synchronization.
 
-Uploading the new files to GitHub does not delete browser data. Clearing Safari website data, using a different browser, or using another device will not carry the local history over.
+## Programming approach
+
+The v3.1 programming changes were reviewed against current resistance-training evidence, including the 2026 ACSM resistance-training position stand and peer-reviewed research on load, rest intervals, and time-efficient resistance training.
+
+The engine remains a rule-based beta rather than a replacement for individualized coaching. See `PROGRAMMING-NOTES.md` for the design rationale and sources used for this release.
 
 ## GitHub Pages upload
 
@@ -54,8 +96,10 @@ This remains a static beta stored in the current browser. It does not yet includ
 - a hosted feedback database
 - analytics or crash reporting
 - subscription billing
+- Apple Health integration
+- App Store or TestFlight distribution
 - professional medical or coaching oversight
 
-The workout rules are structured and personalized, but a qualified fitness professional should review the programming before a broad commercial release.
+The workout rules are more structured in v3.1, but the complete programming system has not been formally reviewed by a qualified fitness professional for commercial release.
 
 Form provides general fitness information, not medical advice. Stop if a movement causes pain. People with an injury, pregnancy, chronic condition, or concerning symptoms should obtain guidance from a qualified professional.
