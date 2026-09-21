@@ -1,20 +1,24 @@
 const app = document.getElementById('app');
 
-const VERSION = '3.1.0';
+const VERSION = '3.2.0';
 
 const STORAGE = {
   profile: 'form-profile-v3',
   history: 'form-history-v3',
   current: 'form-current-v3',
   behavior: 'form-behavior-v3',
+  preImport: 'form-preimport-backup-v3',
   legacyHistory: 'form-history-v2'
 };
+
+let storageIssue = false;
 
 function safeLoad(key, fallback) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : fallback;
   } catch {
+    storageIssue = true;
     return fallback;
   }
 }
@@ -22,13 +26,21 @@ function safeLoad(key, fallback) {
 function safeSave(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+    return true;
+  } catch {
+    storageIssue = true;
+    return false;
+  }
 }
 
 function safeRemove(key) {
   try {
     localStorage.removeItem(key);
-  } catch {}
+    return true;
+  } catch {
+    storageIssue = true;
+    return false;
+  }
 }
 
 function clone(value) {
@@ -71,6 +83,109 @@ const equipmentChoices = [
   ['machine', 'Machines'],
   ['cardio', 'Cardio equipment']
 ];
+
+const setupDetailChoices = [
+  ['floor', 'Clear floor space'],
+  ['wall', 'Wall'],
+  ['chair', 'Chair / seat'],
+  ['step', 'Step / box'],
+  ['sliders', 'Sliders'],
+  ['stabilityBall', 'Stability ball'],
+  ['jumpRope', 'Jump rope']
+];
+
+const strengthSetupChoices = [
+  ['rack', 'Squat rack / uprights'],
+  ['landmine', 'Landmine setup']
+];
+
+const bandSetupChoices = [
+  ['bandAnchorHigh', 'High band anchor'],
+  ['bandAnchorMid', 'Mid-height band anchor']
+];
+
+const cableSetupChoices = [
+  ['dualCable', 'Dual cable towers'],
+  ['cableRowStation', 'Seated row station'],
+  ['ankleCuff', 'Ankle cuff']
+];
+
+const machineSetupChoices = [
+  ['legPress', 'Leg press'],
+  ['hackSquat', 'Hack squat'],
+  ['legExtension', 'Leg extension'],
+  ['lyingLegCurl', 'Lying leg curl'],
+  ['seatedLegCurl', 'Seated leg curl'],
+  ['hipAbduction', 'Hip-abduction machine'],
+  ['seatedCalfRaise', 'Seated calf raise'],
+  ['latPulldown', 'Lat pulldown'],
+  ['rowMachine', 'Row machine'],
+  ['pecDeck', 'Pec deck'],
+  ['chestPress', 'Chest press'],
+  ['shoulderPress', 'Shoulder press']
+];
+
+const cardioSetupChoices = [
+  ['treadmill', 'Treadmill'],
+  ['bike', 'Stationary bike'],
+  ['rower', 'Rower'],
+  ['elliptical', 'Elliptical']
+];
+
+function defaultEquipmentDetails(setup, equipment = []) {
+  const details = {
+    floor: true,
+    wall: true,
+    bench: equipment.includes('bench'),
+    chair: false,
+    step: false,
+    sliders: false,
+    stabilityBall: false,
+    jumpRope: false,
+    rack: false,
+    landmine: false,
+    bandAnchorHigh: false,
+    bandAnchorMid: false,
+    dualCable: false,
+    cableRowStation: false,
+    ankleCuff: false,
+    treadmill: false,
+    bike: false,
+    rower: false,
+    elliptical: false,
+    legPress: false,
+    hackSquat: false,
+    legExtension: false,
+    lyingLegCurl: false,
+    seatedLegCurl: false,
+    hipAbduction: false,
+    seatedCalfRaise: false,
+    latPulldown: false,
+    rowMachine: false,
+    pecDeck: false,
+    chestPress: false,
+    shoulderPress: false
+  };
+
+  if (setup === 'gym') {
+    ['chair','step','rack','landmine','bandAnchorHigh','bandAnchorMid','dualCable','cableRowStation','ankleCuff',
+      'treadmill','bike','rower','elliptical','legPress','hackSquat','legExtension','lyingLegCurl','seatedLegCurl',
+      'hipAbduction','seatedCalfRaise','latPulldown','rowMachine','pecDeck','chestPress','shoulderPress']
+      .forEach(key => { details[key] = true; });
+  }
+
+  return details;
+}
+
+function normalizeEquipmentDetails(raw, setup, equipment) {
+  const base = defaultEquipmentDetails(setup, equipment);
+  if (!raw || typeof raw !== 'object') return base;
+  Object.keys(base).forEach(key => {
+    if (typeof raw[key] === 'boolean') base[key] = raw[key];
+  });
+  base.bench = equipment.includes('bench') ? base.bench !== false : false;
+  return base;
+}
 
 const limitationChoices = ['None', 'Knees', 'Lower back', 'Shoulders', 'Wrists'];
 const priorityChoices = ['Glutes', 'Legs', 'Back', 'Chest', 'Shoulders', 'Arms', 'Core'];
@@ -148,6 +263,7 @@ function defaultProfile() {
     duration: 45,
     setup: 'home',
     equipment: [...setupPresets.home.equipment],
+    equipmentDetails: defaultEquipmentDetails('home', setupPresets.home.equipment),
     limitations: ['None'],
     musclePriorities: [],
     dislikes: '',
@@ -179,6 +295,7 @@ function normalizeProfile(raw) {
   profile.equipment = Array.isArray(profile.equipment) && profile.equipment.length
     ? [...new Set(['bodyweight', ...profile.equipment])]
     : [...setupPresets[profile.setup].equipment];
+  profile.equipmentDetails = normalizeEquipmentDetails(raw.equipmentDetails, profile.setup, profile.equipment);
   profile.limitations = normalizeNoneArray(profile.limitations, limitationChoices);
   profile.musclePriorities = Array.isArray(profile.musclePriorities)
     ? profile.musclePriorities.filter(item => priorityChoices.includes(item)).slice(0, 3)
@@ -203,9 +320,13 @@ function normalizeNoneArray(value, allowed) {
   return [...new Set(array)];
 }
 
+function validHistoryRecord(item) {
+  return item && typeof item === 'object' && typeof item.id === 'string' && Array.isArray(item.details || []);
+}
+
 function loadHistory() {
   const current = safeLoad(STORAGE.history, null);
-  if (Array.isArray(current)) return current;
+  if (Array.isArray(current)) return current.filter(validHistoryRecord);
   const legacy = safeLoad(STORAGE.legacyHistory, []);
   const migrated = Array.isArray(legacy)
     ? legacy.map((item, index) => ({
@@ -336,8 +457,2410 @@ function inferUnilateral(id) {
   return /single-leg|one-arm|reverse-lunge|split-squat|step-up|kickback|side-plank|concentration-curl|pallof|landmine-press/.test(id);
 }
 
+const exerciseAuditMeta = {
+  "barbell-hip-thrust": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Total bar plus plates",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bench",
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-glute-bridge": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "One dumbbell total",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "bodyweight-glute-bridge": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "single-leg-glute-bridge": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per side; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-kickback": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Displayed cable setting for one working leg",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "ankleCuff"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "banded-lateral-walk": {
+    "pattern": "hip abduction",
+    "family": "hip-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Steps each direction; specify both directions per set",
+    "loadBasis": "Named loop band and placement",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "frog-pump": {
+    "pattern": "hip extension",
+    "family": "hip-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "reverse-lunge": {
+    "pattern": "lunge",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-reverse-lunge": {
+    "pattern": "lunge",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "step-up": {
+    "pattern": "step",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [
+        "step"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-bulgarian-split-squat": {
+    "pattern": "split squat",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "step",
+          "bench"
+        ]
+      ],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "machine-hip-abduction": {
+    "pattern": "hip abduction",
+    "family": "hip-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:hipAbduction"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "bodyweight-squat": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "goblet-squat": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "One dumbbell total",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "barbell-back-squat": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Total bar plus plates",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "rack"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "leg-press": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed load on this exact machine",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:legPress"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "hack-squat": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed machine load; identify model",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:hackSquat"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "leg-extension": {
+    "pattern": "knee extension",
+    "family": "knee-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps for defined bilateral variant",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:legExtension"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "wall-sit": {
+    "pattern": "squat isometric",
+    "family": "knee-dominant-squat",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Seconds per bilateral hold",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Timed hold",
+    "requirements": {
+      "needs": [
+        "wall"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "heel-elevated-squat": {
+    "pattern": "squat",
+    "family": "knee-dominant-squat",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [
+        "step"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "split-squat": {
+    "pattern": "split squat",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-split-squat": {
+    "pattern": "split squat",
+    "family": "unilateral-knee-dominant",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-rdl": {
+    "pattern": "hinge",
+    "family": "hip-hinge",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "barbell-rdl": {
+    "pattern": "hinge",
+    "family": "hip-hinge",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Total bar plus plates",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "conventional-deadlift": {
+    "pattern": "hinge from floor",
+    "family": "hip-hinge",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Total bar plus plates",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "high",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-pull-through": {
+    "pattern": "hinge",
+    "family": "hip-hinge",
+    "role": "compound",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "large"
+    }
+  },
+  "slider-hamstring-curl": {
+    "pattern": "knee flexion",
+    "family": "knee-flexion",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "floor",
+        "sliders"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "stability-ball-curl": {
+    "pattern": "knee flexion",
+    "family": "knee-flexion",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "floor",
+        "stabilityBall"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "lying-leg-curl": {
+    "pattern": "knee flexion",
+    "family": "knee-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:lyingLegCurl"
+      ],
+      "needsAny": [],
+      "postures": [
+        "prone"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "seated-leg-curl": {
+    "pattern": "knee flexion",
+    "family": "knee-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:seatedLegCurl"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "single-leg-rdl": {
+    "pattern": "hinge",
+    "family": "hip-hinge",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "standing-calf-raise": {
+    "pattern": "plantar flexion",
+    "family": "plantar-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "single-leg-calf-raise": {
+    "pattern": "plantar flexion",
+    "family": "plantar-flexion",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per leg; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "wall",
+          "chair",
+          "bench"
+        ]
+      ],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-calf-raise": {
+    "pattern": "plantar flexion",
+    "family": "plantar-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "seated-calf-raise": {
+    "pattern": "plantar flexion",
+    "family": "plantar-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed machine load",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:seatedCalfRaise"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "leg-press-calf-raise": {
+    "pattern": "plantar flexion",
+    "family": "plantar-flexion",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed load on this leg-press machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:legPress"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "reverse-snow-angel": {
+    "pattern": "shoulder control",
+    "family": "shoulder-control",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral controlled reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Shoulder control",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "prone"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "prone-w-raise": {
+    "pattern": "shoulder control",
+    "family": "shoulder-control",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral controlled reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Shoulder control",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "prone"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "one-arm-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per arm; both sides make one set",
+    "loadBasis": "One working-hand dumbbell",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "bench",
+          "chair"
+        ]
+      ],
+      "postures": [
+        "standing",
+        "kneeling"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "chest-supported-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bench"
+      ],
+      "needsAny": [],
+      "postures": [
+        "prone"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "band-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named long band, length and anchor setup",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bandAnchorMid"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "band-pulldown": {
+    "pattern": "vertical pull",
+    "family": "vertical-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named long band and anchor setup",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bandAnchorHigh"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "lat-pulldown": {
+    "pattern": "vertical pull",
+    "family": "vertical-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:latPulldown"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "seated-cable-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this station",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "cableRowStation"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "machine-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:rowMachine"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "inverted-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight; record body angle and support height",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "rack"
+      ],
+      "needsAny": [],
+      "postures": [],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "dumbbell-pullover": {
+    "pattern": "shoulder extension",
+    "family": "shoulder-extension",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "One dumbbell held with both hands",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "bench"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "straight-arm-pulldown": {
+    "pattern": "shoulder extension",
+    "family": "shoulder-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "incline-pushup": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight; record support height",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "bench",
+          "step"
+        ]
+      ],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "pushup": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-floor-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-bench-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bench"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "barbell-bench-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Total bar plus plates",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "bench",
+        "rack"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-chest-fly": {
+    "pattern": "horizontal adduction",
+    "family": "horizontal-adduction",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Setting per cable stack; record dual-stack basis",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "dualCable"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "large"
+    }
+  },
+  "pec-deck": {
+    "pattern": "horizontal adduction",
+    "family": "horizontal-adduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "machine:pecDeck"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "machine-chest-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:chestPress"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "band-chest-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named band and anchor setup",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dumbbell-squeeze-press": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "seated-shoulder-press": {
+    "pattern": "vertical push",
+    "family": "vertical-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "chair",
+          "bench"
+        ]
+      ],
+      "postures": [
+        "seated",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "machine-shoulder-press": {
+    "pattern": "vertical push",
+    "family": "vertical-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed setting on this machine",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "machine:shoulderPress"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-lateral-raise": {
+    "pattern": "shoulder abduction",
+    "family": "shoulder-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per arm; both sides make one set",
+    "loadBasis": "Displayed setting for one working arm",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "lateral-raise": {
+    "pattern": "shoulder abduction",
+    "family": "shoulder-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "band-lateral-raise": {
+    "pattern": "shoulder abduction",
+    "family": "shoulder-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps for defined two-arm version",
+    "loadBasis": "Named long band and stance width",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "rear-delt-fly": {
+    "pattern": "horizontal abduction",
+    "family": "horizontal-abduction",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "face-pull": {
+    "pattern": "horizontal pull accessory",
+    "family": "horizontal-pull-accessory",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "large"
+    }
+  },
+  "band-pull-apart": {
+    "pattern": "horizontal abduction",
+    "family": "horizontal-abduction",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named band and grip width",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "wall-slide": {
+    "pattern": "shoulder mobility",
+    "family": "shoulder-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral controlled reps",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [
+        "wall"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "landmine-press": {
+    "pattern": "angled push",
+    "family": "angled-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per arm; both sides make one set",
+    "loadBasis": "Plates added to free end plus bar type recorded",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {
+      "needs": [
+        "floor",
+        "landmine"
+      ],
+      "needsAny": [],
+      "postures": [
+        "kneeling"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "large"
+    }
+  },
+  "dumbbell-curl": {
+    "pattern": "elbow flexion",
+    "family": "elbow-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps for simultaneous version",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "hammer-curl": {
+    "pattern": "elbow flexion",
+    "family": "elbow-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps for simultaneous version",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "band-curl": {
+    "pattern": "elbow flexion",
+    "family": "elbow-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named long band and stance setup",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-curl": {
+    "pattern": "elbow flexion",
+    "family": "elbow-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps for bar-handle version",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "concentration-curl": {
+    "pattern": "elbow flexion",
+    "family": "elbow-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per arm; both sides make one set",
+    "loadBasis": "One working-hand dumbbell",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "chair",
+          "bench"
+        ]
+      ],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "triceps-kickback": {
+    "pattern": "elbow extension",
+    "family": "elbow-extension",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Reps per arm; both sides make one set",
+    "loadBasis": "One working-hand dumbbell",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "overhead-triceps-extension": {
+    "pattern": "elbow extension overhead",
+    "family": "elbow-extension-overhead",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps with one weight",
+    "loadBasis": "One dumbbell held with both hands",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "band-pressdown": {
+    "pattern": "elbow extension",
+    "family": "elbow-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Named long band and anchor setup",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [
+        "bandAnchorHigh"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "cable-pressdown": {
+    "pattern": "elbow extension",
+    "family": "elbow-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "overhead-cable-triceps-extension": {
+    "pattern": "elbow extension overhead",
+    "family": "elbow-extension-overhead",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Accessory",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "large"
+    }
+  },
+  "close-grip-pushup": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight; record support height",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {
+      "needs": [],
+      "needsAny": [
+        [
+          "bench",
+          "step"
+        ]
+      ],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "dead-bug": {
+    "pattern": "anti extension",
+    "family": "anti-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side; one controlled extension equals one side rep",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "heel-taps": {
+    "pattern": "anti extension",
+    "family": "anti-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side for defined tabletop heel tap",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "reverse-crunch": {
+    "pattern": "trunk flexion",
+    "family": "trunk-flexion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "bird-dog": {
+    "pattern": "anti rotation and extension",
+    "family": "anti-rotation-and-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "kneeling",
+        "wristSupport"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "forearm-plank": {
+    "pattern": "anti extension",
+    "family": "anti-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Seconds per bilateral hold",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Timed hold",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "prone"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "side-plank": {
+    "pattern": "anti lateral flexion",
+    "family": "anti-lateral-flexion",
+    "role": "accessory",
+    "difficulty": "intermediate",
+    "unilateral": true,
+    "sideBasis": "Seconds per side; both sides make one set",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Timed hold",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "sideLying"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "pallof-press": {
+    "pattern": "anti rotation",
+    "family": "anti-rotation",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Reps each orientation; both directions make one set",
+    "loadBasis": "Displayed cable setting",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "band-pallof-press": {
+    "pattern": "anti rotation",
+    "family": "anti-rotation",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Reps each orientation; both directions make one set",
+    "loadBasis": "Named band and anchor distance",
+    "prescriptionClass": "Core repetitions",
+    "requirements": {
+      "needs": [
+        "bandAnchorMid"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "hollow-hold": {
+    "pattern": "anti extension",
+    "family": "anti-extension",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Seconds per bilateral hold",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Timed hold",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "supine",
+        "overhead"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "brisk-walk": {
+    "pattern": "locomotion",
+    "family": "locomotion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Minutes continuous; optional effort",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Continuous cardio",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "large"
+    }
+  },
+  "low-impact-circuit": {
+    "pattern": "conditioning circuit",
+    "family": "conditioning-circuit",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Minutes with named stages; no strength-set volume credit",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "shadow-boxing": {
+    "pattern": "conditioning intervals",
+    "family": "conditioning-intervals",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Timed work and easy-recovery rounds",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "incline-walk": {
+    "pattern": "locomotion",
+    "family": "locomotion",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Minutes continuous; record pace and incline if desired",
+    "loadBasis": "Treadmill settings, not external load",
+    "prescriptionClass": "Continuous cardio",
+    "requirements": {
+      "needs": [
+        "cardio:treadmill"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "high",
+      "spaceClass": "normal"
+    }
+  },
+  "bike-intervals": {
+    "pattern": "cycling intervals",
+    "family": "cycling-intervals",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Timed work and easy-recovery rounds",
+    "loadBasis": "Bike resistance setting; optional cadence",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [
+        "cardio:bike"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "rower-intervals": {
+    "pattern": "rowing intervals",
+    "family": "rowing-intervals",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Timed work and easy-recovery rounds",
+    "loadBasis": "Rower setting and effort, not strength load",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [
+        "cardio:rower"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "high",
+      "spaceClass": "normal"
+    }
+  },
+  "elliptical-intervals": {
+    "pattern": "elliptical intervals",
+    "family": "elliptical-intervals",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Timed work and easy-recovery rounds",
+    "loadBasis": "Machine resistance and incline settings",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [
+        "cardio:elliptical"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "medium",
+      "spaceClass": "normal"
+    }
+  },
+  "jump-rope": {
+    "pattern": "jumping intervals",
+    "family": "jumping-intervals",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Timed work and recovery rounds",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Cardio intervals",
+    "requirements": {
+      "needs": [
+        "jumpRope"
+      ],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": true,
+      "noiseLevel": "high",
+      "spaceClass": "large"
+    }
+  },
+  "hip-9090": {
+    "pattern": "hip mobility",
+    "family": "hip-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Alternating switches total; define a full left-right cycle",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "seated"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "thoracic-rotation": {
+    "pattern": "thoracic mobility",
+    "family": "thoracic-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "sideLying"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "cat-cow": {
+    "pattern": "spinal mobility",
+    "family": "spinal-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Slow flexion-extension cycles",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "kneeling",
+        "wristSupport"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "hamstring-sweep": {
+    "pattern": "posterior chain mobility",
+    "family": "posterior-chain-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "ankle-rock": {
+    "pattern": "ankle mobility",
+    "family": "ankle-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "hip-flexor-stretch": {
+    "pattern": "hip mobility hold",
+    "family": "hip-mobility-hold",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Seconds per side",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility hold",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "kneeling"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "child-pose-reach": {
+    "pattern": "trunk mobility hold",
+    "family": "trunk-mobility-hold",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Seconds per side for side-reaching hold",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility hold",
+    "requirements": {
+      "needs": [
+        "floor"
+      ],
+      "needsAny": [],
+      "postures": [
+        "kneeling",
+        "overhead"
+      ],
+      "floorContact": true,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  },
+  "standing-side-bend": {
+    "pattern": "lateral trunk mobility",
+    "family": "lateral-trunk-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Reps per side for dynamic version",
+    "loadBasis": "No external load",
+    "prescriptionClass": "Mobility repetitions",
+    "requirements": {
+      "needs": [],
+      "needsAny": [],
+      "postures": [
+        "standing",
+        "overhead"
+      ],
+      "floorContact": false,
+      "jumping": false,
+      "noiseLevel": "low",
+      "spaceClass": "normal"
+    }
+  }
+  ,
+  "standing-dumbbell-row": {
+    "pattern": "horizontal pull",
+    "family": "horizontal-pull",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {"needs": [], "needsAny": [], "postures": ["standing"], "floorContact": false, "jumping": false, "noiseLevel": "low", "spaceClass": "normal"}
+  },
+  "standing-dumbbell-press": {
+    "pattern": "vertical push",
+    "family": "vertical-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Weight per hand for matched pair",
+    "prescriptionClass": "Loaded compound",
+    "requirements": {"needs": [], "needsAny": [], "postures": ["standing", "overhead"], "floorContact": false, "jumping": false, "noiseLevel": "low", "spaceClass": "normal"}
+  },
+  "wall-pushup": {
+    "pattern": "horizontal push",
+    "family": "horizontal-push",
+    "role": "compound",
+    "difficulty": "beginner",
+    "unilateral": false,
+    "sideBasis": "Total bilateral reps",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Bodyweight compound",
+    "requirements": {"needs": ["wall"], "needsAny": [], "postures": ["standing"], "floorContact": false, "jumping": false, "noiseLevel": "low", "spaceClass": "normal"}
+  },
+  "standing-hip-flexor-mobility": {
+    "pattern": "hip mobility",
+    "family": "hip-mobility",
+    "role": "accessory",
+    "difficulty": "beginner",
+    "unilateral": true,
+    "sideBasis": "Time per side",
+    "loadBasis": "Bodyweight",
+    "prescriptionClass": "Mobility",
+    "requirements": {"needs": [], "needsAny": [], "postures": ["standing"], "floorContact": false, "jumping": false, "noiseLevel": "low", "spaceClass": "normal"}
+  }
+};
+
 function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength') {
   const requires = requiredEquipment(equipment, id);
+  const audited = exerciseAuditMeta[id] || {};
   return {
     id,
     name,
@@ -348,12 +2871,16 @@ function ex(id, name, focuses, muscle, equipment, avoid, cue, kind = 'strength')
     avoid,
     cue,
     kind,
-    family: inferFamily(id),
-    pattern: inferPattern(id, focuses, kind),
-    role: inferRole(id, kind),
-    difficulty: inferDifficulty(id),
+    family: audited.family || inferFamily(id),
+    pattern: audited.pattern || inferPattern(id, focuses, kind),
+    role: audited.role || inferRole(id, kind),
+    difficulty: audited.difficulty || inferDifficulty(id),
     tracking: inferTracking(requires, kind),
-    unilateral: inferUnilateral(id),
+    unilateral: typeof audited.unilateral === 'boolean' ? audited.unilateral : inferUnilateral(id),
+    sideBasis: audited.sideBasis || '',
+    loadBasis: audited.loadBasis || '',
+    prescriptionClass: audited.prescriptionClass || '',
+    requirements: audited.requirements || { needs: [], needsAny: [], postures: [], floorContact: false, jumping: false, noiseLevel: 'low', spaceClass: 'normal' },
     video: null
   };
 }
@@ -407,6 +2934,7 @@ const exerciseLibrary = [
   ex('reverse-snow-angel', 'Reverse snow angel', ['Back'], 'Upper back', 'bodyweight', ['shoulders'], 'Lie face down, keep the movement small, and sweep the arms slowly without shrugging.'),
   ex('prone-w-raise', 'Prone W raise', ['Back', 'Shoulders'], 'Upper back', 'bodyweight', ['shoulders'], 'Lift the elbows and hands only slightly while drawing the shoulder blades gently together.'),
   ex('one-arm-row', 'One-arm dumbbell row', ['Back'], 'Back', 'dumbbells', [], 'Brace on a stable surface and pull the elbow toward the back pocket without twisting.'),
+  ex('standing-dumbbell-row', 'Standing dumbbell row', ['Back'], 'Back', 'dumbbells', ['lower back'], 'Hinge with a braced torso, row both dumbbells toward the hips, and lower them under control.'),
   ex('chest-supported-row', 'Chest-supported dumbbell row', ['Back'], 'Back', 'dumbbells', [], 'Keep the chest supported and pull with the elbows rather than shrugging.'),
   ex('band-row', 'Resistance-band row', ['Back'], 'Back', 'bands', [], 'Keep the ribs stacked and squeeze the shoulder blades without leaning back.'),
   ex('band-pulldown', 'Resistance-band pulldown', ['Back'], 'Lats', 'bands', ['shoulders'], 'Pull the elbows toward the ribs and avoid arching to create extra range.'),
@@ -418,6 +2946,7 @@ const exerciseLibrary = [
   ex('straight-arm-pulldown', 'Straight-arm cable pulldown', ['Back'], 'Lats', 'cable', ['shoulders'], 'Keep a soft elbow bend, pull the handle toward the thighs, and avoid turning it into a triceps movement.'),
 
   // Chest
+  ex('wall-pushup', 'Wall push-up', ['Chest', 'Arms'], 'Chest + triceps', 'bodyweight', ['shoulders', 'wrists'], 'Keep the body long, lower toward the wall under control, and press away without shrugging.'),
   ex('incline-pushup', 'Incline push-up', ['Chest'], 'Chest + triceps', 'bodyweight', ['shoulders', 'wrists'], 'Keep the body straight and lower the chest toward the support with elbows angled back.'),
   ex('pushup', 'Push-up', ['Chest'], 'Chest + triceps', 'bodyweight', ['shoulders', 'wrists'], 'Brace the body as one unit and keep the elbows at a comfortable angle.'),
   ex('dumbbell-floor-press', 'Dumbbell floor press', ['Chest', 'Arms'], 'Chest + triceps', 'dumbbells', ['shoulders'], 'Keep the wrists stacked and pause gently when the upper arms meet the floor.'),
@@ -430,6 +2959,7 @@ const exerciseLibrary = [
   ex('dumbbell-squeeze-press', 'Dumbbell squeeze press', ['Chest', 'Arms'], 'Chest + triceps', 'dumbbells', ['shoulders'], 'Press the dumbbells together throughout the repetition and move slowly.'),
 
   // Shoulders
+  ex('standing-dumbbell-press', 'Standing dumbbell shoulder press', ['Shoulders'], 'Shoulders', 'dumbbells', ['shoulders', 'lower back'], 'Brace the torso, press the dumbbells overhead through a comfortable path, and avoid leaning back.'),
   ex('seated-shoulder-press', 'Seated dumbbell shoulder press', ['Shoulders', 'Arms'], 'Shoulders + triceps', 'dumbbells', ['shoulders'], 'Keep the ribs down and press only through a comfortable overhead range.'),
   ex('machine-shoulder-press', 'Machine shoulder press', ['Shoulders', 'Arms'], 'Shoulders + triceps', 'machine', ['shoulders'], 'Set the seat so the handles start around shoulder height and press without shrugging.'),
   ex('cable-lateral-raise', 'Cable lateral raise', ['Shoulders'], 'Side delts', 'cable', ['shoulders'], 'Lead with the elbow, keep the torso quiet, and stop around shoulder height.'),
@@ -481,6 +3011,7 @@ const exerciseLibrary = [
   ex('cat-cow', 'Cat-cow', ['Mobility + recovery'], 'Spine mobility', 'bodyweight', ['wrists'], 'Move gently with the breath and avoid forcing either end position.', 'mobility'),
   ex('hamstring-sweep', 'Standing hamstring sweep', ['Mobility + recovery'], 'Hamstring mobility', 'bodyweight', [], 'Keep the movement easy and sweep the hands toward the toes without bouncing.', 'mobility'),
   ex('ankle-rock', 'Ankle rocks', ['Mobility + recovery'], 'Ankle mobility', 'bodyweight', ['knees'], 'Keep the heel down and guide the knee forward in a comfortable line.', 'mobility'),
+  ex('standing-hip-flexor-mobility', 'Standing hip-flexor mobility', ['Mobility + recovery'], 'Hip mobility', 'bodyweight', [], 'Use a split stance, tuck the pelvis gently, and shift forward without arching the lower back.', 'mobility'),
   ex('hip-flexor-stretch', 'Half-kneeling hip-flexor stretch', ['Mobility + recovery'], 'Hip mobility', 'bodyweight', ['knees'], 'Tuck the pelvis gently and shift forward without arching the back.', 'mobility'),
   ex('child-pose-reach', 'Child’s-pose side reach', ['Mobility + recovery'], 'Back + shoulders', 'bodyweight', ['knees', 'shoulders'], 'Sit back only as far as comfortable and breathe into the side of the rib cage.', 'mobility'),
   ex('standing-side-bend', 'Standing side bend', ['Mobility + recovery'], 'Torso mobility', 'bodyweight', [], 'Stay tall and reach gently without twisting or collapsing forward.', 'mobility')
@@ -501,7 +3032,7 @@ const state = {
     startedAt: null,
     elapsedMs: savedCurrent?.session?.elapsedMs || 0
   },
-  restUntil: null,
+  restUntil: savedCurrent?.restUntil || null,
   timerId: null,
   focusNotice: '',
   onboarding: {
@@ -510,9 +3041,19 @@ const state = {
   },
   settingsDraft: null,
   quickAdjustment: null,
+  adjustmentDraft: null,
   adjustmentReturn: 'home',
   lastCompletedId: null
 };
+
+if (state.workout) {
+  state.workout.completedSegments = Array.isArray(state.workout.completedSegments) ? state.workout.completedSegments : [];
+  if (state.workout.source === 'plan' && !state.workout.planName) state.workout.planName = state.profile.splitName;
+}
+if (state.answers) {
+  state.answers.constraints = Array.isArray(state.answers.constraints) ? state.answers.constraints : [];
+  state.answers.equipmentDetails = normalizeEquipmentDetails(state.answers.equipmentDetails || state.profile.equipmentDetails, state.profile.setup, state.answers.equipment || state.profile.equipment);
+}
 
 function nav(active = state.view) {
   return `<nav class="nav" aria-label="Main navigation">
@@ -768,6 +3309,7 @@ function setOnboardingNumber(key, value) {
 function setOnboardingSetup(value) {
   state.onboarding.draft.setup = value;
   state.onboarding.draft.equipment = [...setupPresets[value].equipment];
+  state.onboarding.draft.equipmentDetails = defaultEquipmentDetails(value, state.onboarding.draft.equipment);
   renderOnboarding();
 }
 
@@ -997,6 +3539,7 @@ function startPlanWorkout() {
   state.answers = sessionAnswers(step.focuses, 'plan', adjustment);
   state.answers.planIndex = step.index;
   state.answers.planTitle = step.title;
+  state.answers.planName = state.profile.splitName;
   generateWorkout();
 }
 
@@ -1073,18 +3616,44 @@ function defaultAdjustment() {
   return {
     time: state.profile.duration,
     intensity: 'Standard',
-    temporaryAvoid: ['None']
+    temporaryAvoid: ['None'],
+    constraints: []
   };
 }
+
+const todayConstraintChoices = [
+  ['dumbbells-only', 'Dumbbells only'],
+  ['no-bench', 'No bench'],
+  ['no-floor', 'No floor'],
+  ['standing-only', 'Standing only'],
+  ['no-jumping', 'No jumping'],
+  ['quiet', 'Quiet workout'],
+  ['small-space', 'Small space'],
+  ['no-kneeling', 'No kneeling'],
+  ['no-overhead', 'No overhead'],
+  ['no-band-anchor', 'No band anchor'],
+  ['no-cable', 'No cable'],
+  ['no-machines', 'No machines'],
+  ['no-leg-press', 'No leg press'],
+  ['no-hack-squat', 'No hack squat']
+];
 
 function sessionAnswers(focuses, source, adjustment) {
   const extraAvoid = adjustment?.temporaryAvoid || ['None'];
   const limitations = mergeLimitations(state.profile.limitations, extraAvoid);
+  const constraints = [...new Set(adjustment?.constraints || [])];
+  let equipment = [...state.profile.equipment];
+  if (constraints.includes('dumbbells-only')) equipment = ['bodyweight', 'dumbbells'];
+  if (constraints.includes('no-cable')) equipment = equipment.filter(item => item !== 'cable');
+  if (constraints.includes('no-machines')) equipment = equipment.filter(item => item !== 'machine');
+
   return {
     focuses: [...focuses],
     goal: state.profile.goal,
     time: adjustment?.time || state.profile.duration,
-    equipment: [...state.profile.equipment],
+    equipment,
+    equipmentDetails: clone(state.profile.equipmentDetails || defaultEquipmentDetails(state.profile.setup, state.profile.equipment)),
+    constraints,
     limitations,
     intensity: adjustment?.intensity || 'Standard',
     experience: state.profile.experience,
@@ -1103,13 +3672,13 @@ function mergeLimitations(base, extra) {
 function openAdjustment(returnTo) {
   stopUiTimer();
   state.adjustmentReturn = returnTo;
-  state.quickAdjustment = clone(state.quickAdjustment || defaultAdjustment());
+  state.adjustmentDraft = clone(state.quickAdjustment || defaultAdjustment());
   renderAdjustment();
 }
 
 function renderAdjustment() {
   state.view = 'adjust';
-  const adjustment = state.quickAdjustment;
+  const adjustment = state.adjustmentDraft || defaultAdjustment();
   app.innerHTML = `
     <div class="topbar">
       <button class="icon-button" aria-label="Go back" onclick="cancelAdjustment()">←</button>
@@ -1139,8 +3708,21 @@ function renderAdjustment() {
       </div>
     </section>
     <section class="card">
+      <div class="field-label">Anything different today?</div>
+      <p class="helper" style="margin-top:0">Optional. These changes apply to this workout only.</p>
+      <div class="option-grid two-column">
+        ${todayConstraintChoices.map(([value, label]) => optionButton(
+          label,
+          adjustment.constraints.includes(value),
+          `toggleAdjustmentConstraint('${value}')`,
+          true
+        )).join('')}
+      </div>
+      ${adjustment.constraints.length ? `<div class="context-summary"><strong>For this workout</strong><span>${escapeHtml(constraintSummary(adjustment.constraints))}</span></div>` : ''}
+    </section>
+    <section class="card">
       <div class="field-label">Avoid today</div>
-      <p class="helper" style="margin-top:0">Temporary selections apply only to the next workout.</p>
+      <p class="helper" style="margin-top:0">Temporary body-area cautions apply only to the next workout.</p>
       <div class="option-grid">
         ${limitationChoices.map(value => optionButton(
           value,
@@ -1151,23 +3733,23 @@ function renderAdjustment() {
       </div>
     </section>
     <div class="builder-actions">
-      <button class="primary-button" onclick="saveAdjustment()">Save adjustment</button>
-      <button class="text-button centered" onclick="resetAdjustment()">Reset to normal</button>
+      <button class="primary-button" onclick="saveAdjustment()">Apply changes</button>
+      <button class="text-button centered" onclick="resetAdjustmentDraft()">Clear changes</button>
     </div>`;
 }
 
 function setAdjustmentTime(value) {
-  state.quickAdjustment.time = Number(value);
+  state.adjustmentDraft.time = Number(value);
   renderAdjustment();
 }
 
 function setAdjustmentIntensity(value) {
-  state.quickAdjustment.intensity = value;
+  state.adjustmentDraft.intensity = value;
   renderAdjustment();
 }
 
 function toggleAdjustmentAvoid(value) {
-  let array = [...state.quickAdjustment.temporaryAvoid];
+  let array = [...state.adjustmentDraft.temporaryAvoid];
   if (value === 'None') {
     array = ['None'];
   } else {
@@ -1175,24 +3757,39 @@ function toggleAdjustmentAvoid(value) {
     array = array.includes(value) ? array.filter(item => item !== value) : [...array, value];
     if (!array.length) array = ['None'];
   }
-  state.quickAdjustment.temporaryAvoid = array;
+  state.adjustmentDraft.temporaryAvoid = array;
   renderAdjustment();
 }
 
+function toggleAdjustmentConstraint(value) {
+  const constraints = [...state.adjustmentDraft.constraints];
+  state.adjustmentDraft.constraints = constraints.includes(value)
+    ? constraints.filter(item => item !== value)
+    : [...constraints, value];
+  renderAdjustment();
+}
+
+function constraintSummary(constraints) {
+  const labels = new Map(todayConstraintChoices);
+  return constraints.map(value => labels.get(value) || value).join(' · ');
+}
+
 function saveAdjustment() {
+  state.quickAdjustment = clone(state.adjustmentDraft || defaultAdjustment());
+  state.adjustmentDraft = null;
   if (state.adjustmentReturn === 'focus') renderFocusPicker();
   else renderHome();
 }
 
 function cancelAdjustment() {
+  state.adjustmentDraft = null;
   if (state.adjustmentReturn === 'focus') renderFocusPicker();
   else renderHome();
 }
 
-function resetAdjustment() {
-  state.quickAdjustment = null;
-  if (state.adjustmentReturn === 'focus') renderFocusPicker();
-  else renderHome();
+function resetAdjustmentDraft() {
+  state.adjustmentDraft = defaultAdjustment();
+  renderAdjustment();
 }
 
 function adjustmentLabel() {
@@ -1201,12 +3798,14 @@ function adjustmentLabel() {
   const parts = [`${adjustment.time} min`];
   if (adjustment.intensity !== 'Standard') parts.push(adjustment.intensity);
   if (!adjustment.temporaryAvoid.includes('None')) parts.push('temporary caution');
+  if (adjustment.constraints?.length) parts.push(`${adjustment.constraints.length} setup change${adjustment.constraints.length === 1 ? '' : 's'}`);
   return `Adjusted · ${parts.join(' · ')}`;
 }
 
 function consumeAdjustment() {
   const adjustment = clone(state.quickAdjustment || defaultAdjustment());
   state.quickAdjustment = null;
+  state.adjustmentDraft = null;
   return adjustment;
 }
 
@@ -1302,11 +3901,13 @@ function generateWorkout() {
   state.workout = {
     id: `workout-${Date.now()}`,
     title: state.answers.planTitle || workoutTitle(state.answers.focuses),
-    note: `${state.answers.goal} · ${equipmentSummary(state.answers.equipment)}`,
+    note: `${state.answers.goal} · ${equipmentSummary(state.answers.equipment)}${state.answers.constraints?.length ? ` · ${constraintSummary(state.answers.constraints)}` : ''}`,
     focuses: [...state.answers.focuses],
     resolvedFocuses,
     source: state.answers.source,
     planIndex: state.answers.planIndex,
+    planName: state.answers.planName || null,
+    constraints: [...(state.answers.constraints || [])],
     targetMinutes: state.answers.time,
     estimatedMinutes,
     warmup,
@@ -1315,7 +3916,8 @@ function generateWorkout() {
     exercises,
     swaps: [],
     skipped: [],
-    rejectedFamilies: []
+    rejectedFamilies: [],
+    completedSegments: []
   };
 
   state.activeIndex = 0;
@@ -1337,8 +3939,59 @@ function arraysEqualSets(a, b) {
   return first.length === second.length && first.every((value, index) => value === second[index]);
 }
 
+function detailAvailable(token, answers) {
+  const details = answers.equipmentDetails || {};
+  const constraints = answers.constraints || [];
+  const dumbbellsOnly = constraints.includes('dumbbells-only');
+
+  if (token === 'floor') return details.floor !== false && !constraints.includes('no-floor') && !constraints.includes('standing-only');
+  if (token === 'bench') return Boolean(details.bench) && !constraints.includes('no-bench') && !dumbbellsOnly;
+  if (token === 'chair') return Boolean(details.chair) && !dumbbellsOnly;
+  if (token === 'step') return Boolean(details.step) && !dumbbellsOnly;
+  if (token === 'wall') return details.wall !== false;
+  if (token === 'sliders') return Boolean(details.sliders) && !dumbbellsOnly;
+  if (token === 'stabilityBall') return Boolean(details.stabilityBall) && !dumbbellsOnly;
+  if (token === 'jumpRope') return Boolean(details.jumpRope) && !dumbbellsOnly;
+  if (token === 'rack') return Boolean(details.rack) && !dumbbellsOnly;
+  if (token === 'landmine') return Boolean(details.landmine) && !dumbbellsOnly;
+  if (token === 'dualCable') return Boolean(details.dualCable) && answers.equipment.includes('cable');
+  if (token === 'cableRowStation') return Boolean(details.cableRowStation) && answers.equipment.includes('cable');
+  if (token === 'ankleCuff') return Boolean(details.ankleCuff) && answers.equipment.includes('cable');
+  if (token === 'bandAnchorHigh') return Boolean(details.bandAnchorHigh) && !constraints.includes('no-band-anchor');
+  if (token === 'bandAnchorMid') return Boolean(details.bandAnchorMid) && !constraints.includes('no-band-anchor');
+  if (token.startsWith('machine:')) return answers.equipment.includes('machine') && Boolean(details[token.slice(8)]);
+  if (token.startsWith('cardio:')) return answers.equipment.includes('cardio') && Boolean(details[token.slice(7)]);
+  return true;
+}
+
+function anyDetailAvailable(group, answers) {
+  return group.some(token => detailAvailable(token, answers));
+}
+
+function constraintsAllow(item, answers) {
+  const constraints = answers.constraints || [];
+  const requirements = item.requirements || {};
+  const postures = requirements.postures || [];
+
+  if (constraints.includes('no-floor') && requirements.floorContact) return false;
+  if (constraints.includes('standing-only') && postures.some(value => ['seated','kneeling','supine','prone','sideLying'].includes(value))) return false;
+  if (constraints.includes('no-kneeling') && postures.includes('kneeling')) return false;
+  if (constraints.includes('no-overhead') && postures.includes('overhead')) return false;
+  if (constraints.includes('no-jumping') && requirements.jumping) return false;
+  if (constraints.includes('quiet') && requirements.noiseLevel === 'high') return false;
+  if (constraints.includes('small-space') && requirements.spaceClass === 'large') return false;
+  if (constraints.includes('no-leg-press') && ['leg-press','leg-press-calf-raise'].includes(item.id)) return false;
+  if (constraints.includes('no-hack-squat') && item.id === 'hack-squat') return false;
+  return true;
+}
+
 function isEligible(item, answers) {
   if (!item.requires.every(required => answers.equipment.includes(required))) return false;
+  if (!constraintsAllow(item, answers)) return false;
+
+  const requirements = item.requirements || { needs: [], needsAny: [] };
+  if ((requirements.needs || []).some(token => !detailAvailable(token, answers))) return false;
+  if ((requirements.needsAny || []).some(group => !anyDetailAvailable(group, answers))) return false;
 
   const limitations = answers.limitations
     .filter(value => value !== 'None')
@@ -1584,6 +4237,7 @@ function prescribeExercise(item, base, index, totalExercises, warmup, cooldown) 
   return {
     ...item,
     ...prescribed,
+    doseCap: prescribed.sets,
     previousPerformance: performance?.summary || '',
     recommendedWeight: performance?.recommendedWeight || '',
     setData: Array.from({ length: prescribed.sets }, () => ({
@@ -1638,6 +4292,7 @@ function minimumSetsFor(item, focuses) {
 }
 
 function maximumSetsFor(item) {
+  if (Number.isFinite(Number(item.doseCap))) return Number(item.doseCap);
   if (item.kind === 'cardio' || item.kind === 'mobility') return 1;
   if (item.role === 'compound' && state.answers.goal === 'Get stronger') return 5;
   if (item.role === 'compound') return 4;
@@ -1733,23 +4388,21 @@ function getPreviousPerformance(item, currentRepRange) {
   const record = findLastExerciseRecord(item.id, item.name);
   if (!record) return null;
 
-  const completed = (record.detail.sets || []).filter(set => set.done);
+  const completed = (record.detail.sets || []).filter(set => set && set.done);
   if (!completed.length) return null;
 
-  // Keep the displayed load and reps tied to the same actual set. v3.0 could
-  // accidentally combine the last weight with the best reps from another set.
+  const mode = item.tracking;
   const lastCompleted = completed.at(-1);
-  const lastWeight = item.tracking === 'weight' && Number(lastCompleted?.weight) > 0
-    ? Number(lastCompleted.weight)
-    : null;
+  const lastWeight = mode === 'weight' ? Number(lastCompleted?.weight) || null : null;
   const lastReps = Number(lastCompleted?.reps);
-
   let summary = '';
-  if (lastWeight && Number.isFinite(lastReps)) summary = `${formatNumber(lastWeight)} lb × ${lastReps}`;
-  else if (item.tracking === 'band' && lastCompleted?.weight && Number.isFinite(lastReps)) summary = `${lastCompleted.weight} band × ${lastReps}`;
+
+  if (mode === 'weight' && lastWeight && Number.isFinite(lastReps)) summary = `${formatNumber(lastWeight)} lb × ${lastReps}`;
+  else if (mode === 'bodyweight' && Number.isFinite(lastReps)) summary = `Bodyweight × ${lastReps}`;
+  else if (mode === 'band' && lastCompleted?.weight && Number.isFinite(lastReps)) summary = `${lastCompleted.weight} band × ${lastReps}`;
   else if (Number.isFinite(lastReps)) summary = `${lastReps} reps`;
   else if (lastWeight) summary = `${formatNumber(lastWeight)} lb`;
-  else if (item.tracking === 'band' && lastCompleted?.weight) summary = `${lastCompleted.weight} band`;
+  else if (mode === 'band' && lastCompleted?.weight) summary = `${lastCompleted.weight} band`;
   else if (lastCompleted?.reps) summary = String(lastCompleted.reps);
 
   let recommendedWeight = null;
@@ -1760,10 +4413,12 @@ function getPreviousPerformance(item, currentRepRange) {
   const workingSets = workingWeight
     ? weighted.filter(set => Number(set.weight) === workingWeight)
     : [];
-  const allAtTop = upper && workingSets.length >= Math.min(2, completed.length) && workingSets.every(set => Number(set.reps) >= upper);
+  const intendedSets = Math.max(1, Number(record.detail.prescription?.sets) || completed.length);
+  const minimumComparableSets = Math.min(2, intendedSets);
+  const allAtTop = upper && workingSets.length >= minimumComparableSets && workingSets.every(set => Number(set.reps) >= upper);
   const hardLastTime = record.workout.feedback === 'Too hard';
 
-  if (item.tracking === 'weight' && workingWeight && allAtTop && !hardLastTime) {
+  if (mode === 'weight' && workingWeight && allAtTop && !hardLastTime) {
     const increment = progressionIncrement(item);
     recommendedWeight = roundToIncrement(workingWeight + increment, increment);
   }
@@ -1784,9 +4439,10 @@ function modeWeight(values) {
 
 function findLastExerciseRecord(id, name) {
   for (const workout of state.history) {
-    const detail = (workout.details || []).find(item =>
-      (id && item.id === id) || (!item.id && item.name === name)
-    );
+    const detail = (workout.details || []).find(item => {
+      const matches = item.id ? item.id === id : item.name === name;
+      return matches && (item.sets || []).some(set => set && set.done);
+    });
     if (detail) return { workout, detail };
   }
   return null;
@@ -1941,27 +4597,43 @@ function findSwap(index) {
   return candidates[0]?.item || null;
 }
 
-function replacementWithSamePrescription(replacement, current) {
-  let replacementReps = current.reps;
-  if (replacement.kind === 'strength' && replacement.unilateral && !replacementReps.includes('/ side')) replacementReps += ' / side';
-  if (replacement.kind === 'strength' && !replacement.unilateral) replacementReps = replacementReps.replace(/\s*\/ side/i, '');
-  const performance = getPreviousPerformance(replacement, replacementReps);
-  const prefillWeight = performance?.recommendedWeight ?? performance?.lastWeight ?? '';
-  return {
-    ...replacement,
-    sets: current.sets,
-    reps: replacementReps,
-    rest: current.rest,
-    previousPerformance: performance?.summary || '',
-    recommendedWeight: performance?.recommendedWeight || '',
-    tracking: replacement.tracking,
-    unilateral: replacement.unilateral,
-    setData: Array.from({ length: current.sets }, () => ({
-      weight: replacement.tracking === 'weight' ? String(prefillWeight || '') : '',
-      reps: '',
-      done: false
-    }))
-  };
+function prescribeReplacementForRemaining(replacement, current, index) {
+  const completedSets = current.setData.filter(set => set.done);
+  const remainingCount = Math.max(1, current.sets - completedSets.length);
+  const base = getBasePrescription();
+  const prescribed = prescribeExercise(
+    replacement,
+    base,
+    index,
+    state.workout.exercises.length,
+    state.workout.warmup,
+    state.workout.cooldown
+  );
+  resizeSetData(prescribed, Math.min(remainingCount, prescribed.sets));
+  prescribed.doseCap = prescribed.sets;
+  return prescribed;
+}
+
+function archiveCompletedSwapWork(current, index) {
+  const completedSets = current.setData.filter(set => set.done).map(set => ({ ...set }));
+  if (!completedSets.length) return;
+  state.workout.completedSegments = state.workout.completedSegments || [];
+  state.workout.completedSegments.push({
+    id: current.id,
+    name: current.name,
+    family: current.family,
+    pattern: current.pattern,
+    muscle: current.muscle,
+    kind: current.kind,
+    tracking: current.tracking,
+    unilateral: Boolean(current.unilateral),
+    sideBasis: current.sideBasis || '',
+    loadBasis: current.loadBasis || '',
+    prescription: { sets: current.sets, reps: current.reps, rest: current.rest },
+    sets: completedSets,
+    order: index,
+    swappedOut: true
+  });
 }
 
 function recordSwap(current, replacement) {
@@ -1976,39 +4648,552 @@ function recordSwap(current, replacement) {
     at: new Date().toISOString()
   });
   state.behavior.exerciseRejects[current.id] = (state.behavior.exerciseRejects[current.id] || 0) + 1;
-  state.behavior.familyRejects[current.family] = (state.behavior.familyRejects[current.family] || 0) + 1;
   safeSave(STORAGE.behavior, state.behavior);
+}
+
+function applySwapAt(index, replacement) {
+  const current = state.workout.exercises[index];
+  archiveCompletedSwapWork(current, index);
+  recordSwap(current, replacement);
+  state.workout.exercises[index] = prescribeReplacementForRemaining(replacement, current, index);
+  state.restUntil = null;
+  state.workout.estimatedMinutes = estimateWorkoutMinutes(state.workout.exercises, state.workout.warmup, state.workout.cooldown);
+  persistCurrent();
 }
 
 function swapExercise(index) {
   const replacement = findSwap(index);
   if (!replacement) return;
-  const current = state.workout.exercises[index];
-  recordSwap(current, replacement);
-  state.workout.exercises[index] = replacementWithSamePrescription(replacement, current);
-  persistCurrent();
+  applySwapAt(index, replacement);
   showWorkout();
 }
 
 const howToOverrides = {
-  'barbell-hip-thrust': ['Set your upper back against the bench and plant your feet.', 'Drive through the full foot until the hips are fully extended.', 'Keep the ribs down and avoid finishing by arching the lower back.'],
-  'goblet-squat': ['Hold the dumbbell close to your chest and brace.', 'Sit down between the hips while keeping the whole foot planted.', 'Let the knees track with the toes and stand through the floor.'],
-  'barbell-back-squat': ['Brace before you descend and keep your feet planted.', 'Sit down under control while the knees track with the toes.', 'Use the deepest range you can control without losing trunk position.'],
-  'dumbbell-rdl': ['Start tall with soft knees and the weights close to your thighs.', 'Push the hips back while keeping the weights close to your legs.', 'Stop when the hamstrings are loaded, then drive the hips forward to stand.'],
-  'barbell-rdl': ['Start tall with soft knees and the bar close to your thighs.', 'Push the hips back while keeping the bar close to your legs.', 'Stop when the hamstrings are loaded and keep the spine neutral.'],
-  'conventional-deadlift': ['Set the bar close to your shins and brace before pulling.', 'Push the floor away while keeping the bar close to the body.', 'Stand tall at the top without leaning backward.'],
-  'dumbbell-bench-press': ['Plant your feet and keep the shoulder blades supported by the bench.', 'Lower the dumbbells under control with the forearms nearly vertical.', 'Press up without letting the shoulders roll forward.'],
-  'barbell-bench-press': ['Plant your feet and set the shoulder blades against the bench.', 'Lower the bar under control with the forearms nearly vertical.', 'Press the bar up while keeping your upper back stable.'],
-  'one-arm-row': ['Support yourself so the torso stays steady.', 'Pull the elbow toward the hip without twisting the body.', 'Lower the weight under control until the shoulder can reach naturally.'],
-  'lat-pulldown': ['Sit tall and secure the thighs under the pad.', 'Pull the elbows down toward your sides instead of yanking with the hands.', 'Control the return and avoid leaning far backward.'],
-  'seated-shoulder-press': ['Sit tall with the ribs stacked over the pelvis.', 'Press the dumbbells overhead through a comfortable path.', 'Avoid turning the last part of the press into a backbend.'],
-  'reverse-lunge': ['Stand tall and step one foot back far enough to stay balanced.', 'Lower under control while keeping the front foot planted.', 'Drive through the front foot to return to standing.'],
-  'dumbbell-reverse-lunge': ['Hold the weights at your sides and step back softly.', 'Keep the front foot planted and lower under control.', 'Drive through the front foot to return to standing.'],
-  'dumbbell-bulgarian-split-squat': ['Set the front foot far enough forward to stay balanced.', 'Lower mostly straight down while keeping the front foot planted.', 'Drive through the front foot and use the rear leg mainly for support.'],
-  'pushup': ['Brace the body in one straight line from shoulders to heels.', 'Lower the chest under control with the elbows at a comfortable angle.', 'Press the floor away without letting the hips sag.'],
-  'forearm-plank': ['Place the elbows under the shoulders and brace the trunk.', 'Squeeze the glutes and keep the ribs down.', 'Stop the set when you can no longer keep the back from sagging.'],
-  'dead-bug': ['Lie on your back and gently keep the lower back supported.', 'Move the opposite arm and leg only as far as you can stay braced.', 'Return slowly and repeat without letting the ribs flare.'],
-  'pallof-press': ['Stand or kneel sideways to the cable and brace your trunk.', 'Press the handle straight away from your chest.', 'Resist rotation and return the handle slowly.']
+  "barbell-hip-thrust": [
+    "Brace a stable bench and position a padded bar across the hip crease.",
+    "Lift the hips until the torso and thighs align.",
+    "Keep the bench still and finish without leaning back through the spine."
+  ],
+  "dumbbell-glute-bridge": [
+    "Lie on the floor with knees bent and secure one weight across the hips.",
+    "Press through the feet and raise the hips.",
+    "Hold the weight securely and avoid arching at the top."
+  ],
+  "bodyweight-glute-bridge": [
+    "Lie on your back with knees bent and feet flat.",
+    "Lift the hips, pause briefly, then lower.",
+    "Keep the ribs down rather than lifting by arching your back."
+  ],
+  "single-leg-glute-bridge": [
+    "Lie on your back and lift one foot while keeping the other planted.",
+    "Raise the hips using the planted leg; repeat on the other side.",
+    "Stop the set when the pelvis twists or drops."
+  ],
+  "cable-kickback": [
+    "Attach a cuff to one ankle and face a low pulley in a steady stance.",
+    "Move the working leg back from the hip, then return slowly.",
+    "Do not swing the leg or arch the lower back to gain range."
+  ],
+  "banded-lateral-walk": [
+    "Place a loop band above the knees and take a small comfortable squat.",
+    "Step sideways with short controlled steps, then return.",
+    "Keep tension without rocking the torso or letting the knees collapse inward."
+  ],
+  "frog-pump": [
+    "Lie on your back with soles together and knees open comfortably.",
+    "Lift and lower the hips through a small controlled range.",
+    "Do not force the knees wide or extend through the lower back."
+  ],
+  "reverse-lunge": [
+    "Stand with feet apart and clear the space behind you.",
+    "Step one foot back, lower comfortably, and push through the front foot to return.",
+    "Keep the front foot planted and use support or a shorter range if balance is poor."
+  ],
+  "dumbbell-reverse-lunge": [
+    "Hold a matched pair at your sides with room to step back.",
+    "Step back and lower, then return through the front leg.",
+    "Keep the weights still and do not rush the change of direction."
+  ],
+  "step-up": [
+    "Use a stable exercise step at a manageable height and place the full foot on it.",
+    "Drive through the elevated leg and lower slowly.",
+    "Avoid launching off the trailing foot or using an unstable chair."
+  ],
+  "dumbbell-bulgarian-split-squat": [
+    "Place the rear foot on a stable suitable support and set a balanced split stance.",
+    "Lower under control and drive through the front foot.",
+    "Choose a lower support or floor split squat if balance or position is not controlled."
+  ],
+  "machine-hip-abduction": [
+    "Adjust the seat and pads so the hips stay comfortable and supported.",
+    "Open the legs smoothly and return slowly.",
+    "Keep the pelvis still and avoid bouncing the pads."
+  ],
+  "bodyweight-squat": [
+    "Stand in a comfortable stance with the whole foot on the floor.",
+    "Sit down between the hips, then stand.",
+    "Use a range you control without heels lifting or balance shifting abruptly."
+  ],
+  "goblet-squat": [
+    "Hold one weight securely at your chest with feet in a comfortable stance.",
+    "Lower between the hips and stand through the whole foot.",
+    "Keep the weight close and stop before posture or balance is lost."
+  ],
+  "barbell-back-squat": [
+    "Set rack and safeties to appropriate heights and establish a secure bar position.",
+    "Brace, lower within control, then stand.",
+    "Practice unracking and reracking; do not work beyond a safely managed effort."
+  ],
+  "leg-press": [
+    "Adjust the seat and stops so the hips stay supported through a comfortable range.",
+    "Bend the knees, then press the platform away smoothly.",
+    "Do not let the pelvis roll off the pad or force the knees into lockout."
+  ],
+  "hack-squat": [
+    "Set the machine stops and place shoulders and back securely against the pads.",
+    "Lower with feet planted, then stand smoothly.",
+    "Stay within a controlled depth and learn the release and return mechanism first."
+  ],
+  "leg-extension": [
+    "Align the knee with the machine pivot and set the pad above the ankle.",
+    "Straighten the knees smoothly, then lower.",
+    "Keep the hips down and avoid kicking or snapping into the end range."
+  ],
+  "wall-sit": [
+    "Lean against a clear wall and slide to a comfortable knee bend.",
+    "Hold while breathing steadily.",
+    "Use a shallower position if needed and stop before sliding or straining."
+  ],
+  "heel-elevated-squat": [
+    "Place heels on a stable low wedge with the forefoot planted.",
+    "Squat and stand with controlled knee travel.",
+    "Keep the support from shifting and do not force extra depth."
+  ],
+  "split-squat": [
+    "Set a split stance with both feet on the floor.",
+    "Lower straight down and rise mainly through the front leg.",
+    "Widen the stance slightly or shorten the range if balance is poor."
+  ],
+  "dumbbell-split-squat": [
+    "Hold a matched pair at your sides and place both feet in a steady split stance.",
+    "Lower and rise mainly through the front leg.",
+    "Keep the front foot flat and do not use a stance you cannot balance."
+  ],
+  "dumbbell-rdl": [
+    "Stand with soft knees and hold the weights close to the thighs.",
+    "Send the hips back, then return to standing.",
+    "Stop where the hinge remains controlled; do not reach lower by rounding the back."
+  ],
+  "barbell-rdl": [
+    "Start standing with a securely loaded bar, using a taught safe pickup or rack.",
+    "Hinge the hips back with the bar close, then stand.",
+    "Keep knees softly bent and stop before the torso position changes to gain depth."
+  ],
+  "conventional-deadlift": [
+    "Set the bar at an appropriate height over the midfoot and establish a braced grip.",
+    "Push through the floor and stand tall with the bar close.",
+    "Lower under control; avoid jerking from the floor or leaning back at the top."
+  ],
+  "cable-pull-through": [
+    "Face away from a low pulley and hold the rope between the legs with cable tension.",
+    "Hinge back, then drive the hips forward to stand.",
+    "Keep the arms quiet and do not overextend the lower back."
+  ],
+  "slider-hamstring-curl": [
+    "Lie with heels on suitable sliders and raise the hips to a controlled bridge.",
+    "Slide the feet out and draw them back while controlling the hips.",
+    "Shorten the range if the hips drop or the sliding surface is unpredictable."
+  ],
+  "stability-ball-curl": [
+    "Lie with heels on a stable ball and arms positioned for balance.",
+    "Lift the hips and roll the ball toward you, then extend slowly.",
+    "Stop if the ball rolls away or you cannot keep the hips controlled."
+  ],
+  "lying-leg-curl": [
+    "Align the knees with the pivot and place the roller above the heels.",
+    "Curl the heels toward the hips, then lower slowly.",
+    "Keep the hips against the pad and avoid kicking the load."
+  ],
+  "seated-leg-curl": [
+    "Adjust the knee pivot, ankle roller and thigh pad for a secure seat.",
+    "Bend the knees against the resistance and return smoothly.",
+    "Keep the hips against the seat and avoid lifting under the thigh pad."
+  ],
+  "single-leg-rdl": [
+    "Balance on one foot with a soft knee and space behind you.",
+    "Reach the free leg back while hinging, then stand.",
+    "Keep hips facing the floor and use support if balance limits the movement."
+  ],
+  "standing-calf-raise": [
+    "Stand with both feet on level ground and establish balance.",
+    "Rise onto the balls of the feet, pause, and lower.",
+    "Move slowly without bouncing or rolling to the outer feet."
+  ],
+  "single-leg-calf-raise": [
+    "Stand on one foot on level ground and lightly hold a stable support.",
+    "Raise and lower the heel with control.",
+    "Use the support for balance, not to pull yourself upward."
+  ],
+  "dumbbell-calf-raise": [
+    "Stand on level ground with a matched pair at your sides.",
+    "Lift both heels, pause, and lower slowly.",
+    "Keep balance and avoid bouncing or dropping the weights."
+  ],
+  "seated-calf-raise": [
+    "Place the forefeet on the machine support and set the thigh pad securely.",
+    "Raise the heels, pause, and lower through a comfortable range.",
+    "Keep the pads secure and avoid bouncing at the bottom."
+  ],
+  "leg-press-calf-raise": [
+    "Use a machine designed for this movement and secure the forefeet on its platform.",
+    "Move at the ankles while keeping the knee position steady.",
+    "Do not let the feet slip off the edge or use a setup without suitable stops."
+  ],
+  "reverse-snow-angel": [
+    "Lie face down with comfortable head support and room for the arms.",
+    "Sweep the arms slowly through a small controlled arc.",
+    "Do not shrug or lift the chest to force the arms farther."
+  ],
+  "prone-w-raise": [
+    "Lie face down with elbows bent into a comfortable W.",
+    "Lift hands and elbows slightly and lower with control.",
+    "Keep the neck comfortable and avoid lifting by arching the back."
+  ],
+  "one-arm-row": [
+    "Brace one hand on a stable suitable surface and hold the weight in the other.",
+    "Draw the elbow back, then lower until the arm is long.",
+    "Keep the torso steady rather than twisting to lift the weight."
+  ],
+  "chest-supported-row": [
+    "Set a stable incline bench and lie chest-down with feet planted and arms clear.",
+    "Pull elbows back and lower smoothly.",
+    "Keep the chest supported without craning the neck or shrugging."
+  ],
+  "band-row": [
+    "Secure a suitable band to a mid-height anchor and take a stable stance.",
+    "Pull the elbows back, then return under tension.",
+    "Check the anchor and band; do not lean backward to finish each rep."
+  ],
+  "band-pulldown": [
+    "Fix the band to a suitable high anchor and stand where tension is manageable.",
+    "Pull the elbows down toward the ribs and return slowly.",
+    "Do not arch the back or use an unverified door attachment."
+  ],
+  "lat-pulldown": [
+    "Adjust the seat and thigh pad and take a comfortable grip on the bar.",
+    "Pull toward the upper chest, then let the arms extend under control.",
+    "Keep the torso quiet and do not pull behind the neck."
+  ],
+  "seated-cable-row": [
+    "Sit at a low-row station with feet braced and arms extended comfortably.",
+    "Pull the handle toward the lower ribs, then return.",
+    "Avoid rocking far backward or rounding forward to gain range."
+  ],
+  "machine-row": [
+    "Set the seat so the chest rests securely on the pad and handles are reachable.",
+    "Pull the elbows back and let the arms return slowly.",
+    "Keep the chest on the pad and avoid shrugging."
+  ],
+  "inverted-row": [
+    "Use a securely fixed suitable bar and choose a body angle you can control.",
+    "Keep the body aligned and pull the chest toward the bar.",
+    "Check the bar cannot roll or shift; do not improvise an unstable setup."
+  ],
+  "dumbbell-pullover": [
+    "Lie fully supported on a stable bench and hold one weight securely above the chest.",
+    "Lower the arms through a comfortable arc and return.",
+    "Keep ribs controlled and do not chase depth beyond your shoulder control."
+  ],
+  "straight-arm-pulldown": [
+    "Face a high pulley with a soft elbow bend and stable stance.",
+    "Bring the handle toward the thighs while keeping the elbow angle steady.",
+    "Do not turn the movement into a pressdown or arch the lower back."
+  ],
+  "incline-pushup": [
+    "Place hands on a stable elevated surface and step back into a straight body line.",
+    "Lower the chest toward the support and press away.",
+    "Ensure the support cannot slide and keep the body moving as one unit."
+  ],
+  "pushup": [
+    "Place hands on the floor and establish a straight body line.",
+    "Lower and press the body as one unit.",
+    "Use an easier version if the hips sag or full controlled reps are not possible."
+  ],
+  "dumbbell-floor-press": [
+    "Lie on the floor with knees bent and weights securely above the elbows.",
+    "Press up and lower until upper arms gently meet the floor.",
+    "Avoid bouncing the arms or dropping the weights after the set."
+  ],
+  "dumbbell-bench-press": [
+    "Sit and position the weights safely on a stable flat bench, then lie back with feet planted.",
+    "Lower smoothly and press above the chest.",
+    "Use a manageable load for getting into and out of position; avoid uncontrolled depth."
+  ],
+  "barbell-bench-press": [
+    "Set bench and safety equipment and take a stable grip with feet planted.",
+    "Lower the bar under control and press upward.",
+    "Do not approach failure without a safe assistance arrangement; learn reracking first."
+  ],
+  "cable-chest-fly": [
+    "Set two pulleys around chest height and stand balanced with a soft elbow bend.",
+    "Bring the hands together in a controlled arc.",
+    "Avoid reaching so far back that the shoulders roll forward or lose control."
+  ],
+  "pec-deck": [
+    "Adjust the seat and starting position so the arms open comfortably.",
+    "Bring the pads or handles together and return slowly.",
+    "Keep the upper back supported without forcing an excessive stretch."
+  ],
+  "machine-chest-press": [
+    "Set the seat so the handles begin near mid-chest in a comfortable position.",
+    "Press forward and return with control.",
+    "Keep the torso supported and avoid rolling the shoulders forward at the finish."
+  ],
+  "band-chest-press": [
+    "Secure the band behind you at chest height and take a balanced split stance.",
+    "Press the hands forward and return slowly.",
+    "Check the anchor and keep the ribs from flaring as the arms extend."
+  ],
+  "dumbbell-squeeze-press": [
+    "Lie on the floor holding a matched pair together above the chest.",
+    "Keep light inward pressure while pressing and lowering.",
+    "Keep the grip secure; do not choose this if the weight shapes make contact unstable."
+  ],
+  "seated-shoulder-press": [
+    "Sit securely with feet planted and weights near shoulder height.",
+    "Press through a comfortable overhead range and lower.",
+    "Keep ribs controlled and choose a setup that does not require leaning back."
+  ],
+  "machine-shoulder-press": [
+    "Adjust the seat so handles start comfortably near shoulder height.",
+    "Press upward and return under control.",
+    "Keep the torso supported and do not force a painful starting position."
+  ],
+  "cable-lateral-raise": [
+    "Hold a low-pulley handle in one hand and stand steadily with cable clearance.",
+    "Raise the arm out to the side and lower slowly.",
+    "Avoid swinging the torso or pulling the shoulder toward the ear."
+  ],
+  "lateral-raise": [
+    "Stand with light weights at your sides and soft elbows.",
+    "Raise the arms out to the sides through a controlled range.",
+    "Use a load that avoids swinging and shrugging; heavier is not required."
+  ],
+  "band-lateral-raise": [
+    "Stand securely on a long band and hold both ends with soft elbows.",
+    "Raise the arms sideways and lower with control.",
+    "Keep the band secure under the feet and avoid shrugging."
+  ],
+  "rear-delt-fly": [
+    "Hinge forward with soft knees and let light weights hang beneath the shoulders.",
+    "Open the arms outward and lower slowly.",
+    "Keep the hinge steady; choose another variant if the lower back limits control."
+  ],
+  "face-pull": [
+    "Set a rope near upper-chest or face height and take a stable stance.",
+    "Pull toward the face while separating the hands comfortably.",
+    "Do not lean back or force the shoulders into a range you cannot control."
+  ],
+  "band-pull-apart": [
+    "Hold a band in front at a comfortable chest height.",
+    "Spread the hands while keeping the torso still, then return.",
+    "Keep the shoulders relaxed and do not pull farther by arching the back."
+  ],
+  "wall-slide": [
+    "Stand against a clear wall with the arms in a comfortable starting position.",
+    "Slide the arms upward only as far as you control.",
+    "Avoid forcing the hands flat or flaring the ribs to reach higher."
+  ],
+  "landmine-press": [
+    "Secure the bar in a proper landmine and take a steady half-kneeling position.",
+    "Press the free end forward and upward with one arm.",
+    "Keep the torso square; do not improvise an unsecured corner anchor."
+  ],
+  "dumbbell-curl": [
+    "Stand with weights at your sides and elbows near the ribs.",
+    "Curl both weights and lower under control.",
+    "Keep the torso still and avoid driving the elbows forward to lift more."
+  ],
+  "hammer-curl": [
+    "Stand holding weights with palms facing inward.",
+    "Curl while keeping that grip, then lower slowly.",
+    "Keep the wrists steady and avoid swinging the torso."
+  ],
+  "band-curl": [
+    "Stand securely on a long band and hold the ends with elbows by the ribs.",
+    "Curl the hands upward and lower under tension.",
+    "Check the band cannot slip from under the feet."
+  ],
+  "cable-curl": [
+    "Attach a suitable bar to a low pulley and stand balanced.",
+    "Curl without moving the upper arms much, then lower.",
+    "Keep shoulders and torso from swinging forward and back."
+  ],
+  "concentration-curl": [
+    "Sit on a stable seat and brace the upper arm against the inner thigh.",
+    "Curl the weight and lower slowly.",
+    "Keep the shoulder still and avoid pushing with the thigh to finish the rep."
+  ],
+  "triceps-kickback": [
+    "Hinge in a steady split stance and hold the working upper arm alongside the torso.",
+    "Straighten the elbow and return slowly.",
+    "Keep the upper arm still and avoid swinging the shoulder."
+  ],
+  "overhead-triceps-extension": [
+    "Stand steadily and hold one weight securely above the head with both hands.",
+    "Bend and straighten the elbows through a comfortable range.",
+    "Keep ribs controlled and use a weight you can safely position and remove."
+  ],
+  "band-pressdown": [
+    "Secure a suitable band overhead and place elbows beside the ribs.",
+    "Straighten the elbows downward and return slowly.",
+    "Check the band and anchor; keep the upper arms from swinging."
+  ],
+  "cable-pressdown": [
+    "Use a suitable high-pulley handle with elbows near your sides.",
+    "Press downward by straightening the elbows and return under control.",
+    "Avoid leaning body weight onto the handle or moving the shoulders to finish."
+  ],
+  "overhead-cable-triceps-extension": [
+    "Face away from a low pulley with the rope held above the shoulders in a steady stance.",
+    "Extend the elbows overhead, then return slowly.",
+    "Keep the upper arms steady and avoid arching to overcome the load."
+  ],
+  "close-grip-pushup": [
+    "Place hands somewhat closer together on a stable elevated surface.",
+    "Lower the chest and press away while keeping the body aligned.",
+    "Use a comfortable wrist and elbow position rather than forcing an extreme narrow grip."
+  ],
+  "dead-bug": [
+    "Lie on your back with hips and knees bent and arms raised.",
+    "Slowly extend opposite arm and leg, return, and switch sides.",
+    "Shorten the reach if the lower back lifts or breathing becomes strained."
+  ],
+  "heel-taps": [
+    "Lie on your back with knees bent above the hips.",
+    "Lower one heel gently to the floor, return, and alternate.",
+    "Keep the trunk steady and stop the lowering before the back arches."
+  ],
+  "reverse-crunch": [
+    "Lie on your back with knees bent and arms resting by the sides.",
+    "Gently curl the pelvis upward and lower slowly.",
+    "Move the pelvis rather than swinging the legs for momentum."
+  ],
+  "bird-dog": [
+    "Start on hands and knees in a comfortable stable position.",
+    "Reach one arm and the opposite leg long, return, and switch.",
+    "Keep the pelvis level and avoid lifting the limbs by arching the back."
+  ],
+  "forearm-plank": [
+    "Place forearms on the floor and choose a foot or knee-supported version.",
+    "Hold a steady body line while breathing.",
+    "End the hold before the lower back sags or the shoulders lose support."
+  ],
+  "side-plank": [
+    "Lie on one side with forearm under the shoulder and choose knees or feet for support.",
+    "Lift the hips and hold, then change sides.",
+    "Keep the shoulder supported and lower before the hips twist or sag."
+  ],
+  "pallof-press": [
+    "Stand side-on to a chest-height pulley and hold the handle at the chest.",
+    "Press the hands forward, resist rotation, then return.",
+    "Keep hips and ribs facing ahead; repeat with the other side toward the pulley."
+  ],
+  "band-pallof-press": [
+    "Secure a band at chest height and stand side-on holding it near the chest.",
+    "Press forward without turning and return slowly.",
+    "Check the anchor and repeat with the other side facing it."
+  ],
+  "hollow-hold": [
+    "Lie on your back with knees bent and choose a short controllable arm and leg position.",
+    "Lift into a small braced hold and breathe.",
+    "Shorten the lever or stop when the lower back lifts."
+  ],
+  "brisk-walk": [
+    "Choose a suitable clear walking route and start at an easy pace.",
+    "Build to a pace that increases breathing while conversation remains possible.",
+    "Adjust for footing, conditions and symptoms; do not chase a rigid pace."
+  ],
+  "low-impact-circuit": [
+    "Clear room for marching and side steps; keep reaches below overhead if restricted.",
+    "Alternate marching, side steps and controlled arm reaches using a stated timer.",
+    "Stay low impact and reduce pace before movement control deteriorates."
+  ],
+  "shadow-boxing": [
+    "Stand balanced with clear arm space and begin with easy punches.",
+    "Alternate controlled punch combinations with easy movement during stated recovery.",
+    "Do not snap elbows into lockout or twist faster than you can control."
+  ],
+  "incline-walk": [
+    "Learn the treadmill controls and start at a low speed and incline.",
+    "Walk at a controlled pace and adjust gradually.",
+    "Keep the safety stop accessible and reduce settings if you must hang on the rails."
+  ],
+  "bike-intervals": [
+    "Adjust the saddle and handles for a comfortable position and begin easily.",
+    "Alternate controlled harder pedaling with easy recovery on a stated timer.",
+    "Keep pedaling smooth and avoid resistance that makes the hips rock."
+  ],
+  "rower-intervals": [
+    "Set the foot straps and learn an easy rowing stroke before intervals.",
+    "Drive legs, then torso, then arms; return arms, torso, then legs.",
+    "Avoid rounding or rushing the recovery; use a different mode if technique is unfamiliar."
+  ],
+  "elliptical-intervals": [
+    "Step on carefully, hold the handles and start at an easy setting.",
+    "Alternate controlled effort with easy movement using stated intervals.",
+    "Stay upright and lower resistance before losing smooth movement."
+  ],
+  "jump-rope": [
+    "Use a suitable rope and clear the full arc on a stable surface.",
+    "Make low controlled jumps during short work bouts and recover between them.",
+    "Stop before landings become heavy; do not use for no-jumping or quiet sessions."
+  ],
+  "hip-9090": [
+    "Sit on the floor with bent knees and hands available for support.",
+    "Move the knees gently from one side to the other.",
+    "Do not force the knees toward the floor or twist through discomfort."
+  ],
+  "thoracic-rotation": [
+    "Lie on one side with knees bent and stacked, head comfortable.",
+    "Open the upper arm and rotate the upper trunk, then return.",
+    "Keep the knees together and do not force the hand to reach the floor."
+  ],
+  "cat-cow": [
+    "Start on hands and knees in a comfortable position.",
+    "Gently alternate a rounded and extended spine with the breath.",
+    "Avoid pushing into either end range or treating pain as a stretch target."
+  ],
+  "hamstring-sweep": [
+    "Step one heel slightly forward with a soft supporting knee.",
+    "Hinge gently and sweep the hands downward, then change sides.",
+    "Do not bounce or round farther to reach the toes."
+  ],
+  "ankle-rock": [
+    "Stand in a short split stance with the front heel planted.",
+    "Guide the front knee forward gently and return; change sides.",
+    "Keep the heel down and knee moving comfortably over the foot."
+  ],
+  "hip-flexor-stretch": [
+    "Take a cushioned half-kneeling position and gently tuck the pelvis.",
+    "Shift slightly forward until a mild front-hip stretch is felt.",
+    "Avoid arching the lower back or pressing through knee discomfort."
+  ],
+  "child-pose-reach": [
+    "Kneel on a comfortable surface and sit back only as far as tolerated.",
+    "Reach hands gently to one side and breathe, then change sides.",
+    "Do not force the hips to the heels or pull through shoulder discomfort."
+  ],
+  "standing-side-bend": [
+    "Stand tall with arms relaxed; raise an arm only if that variant is allowed.",
+    "Bend gently to one side and return, then switch.",
+    "Avoid twisting or collapsing forward to make the bend larger."
+  ]
+  ,
+  "standing-dumbbell-row": ["Stand with a soft knee bend and hinge until your torso is steady.", "Row both dumbbells toward your hips without jerking the torso.", "Keep the back neutral and stop the set if you cannot hold the hinge."],
+  "standing-dumbbell-press": ["Stand tall with the dumbbells at shoulder height and brace your trunk.", "Press overhead through a comfortable path, then lower with control.", "Keep the ribs stacked and avoid turning the press into a backbend."],
+  "wall-pushup": ["Place your hands on a clear wall and step back until your body forms a straight line.", "Lower your chest toward the wall, then press away.", "Keep the hips and ribs moving together instead of sagging or folding."],
+  "standing-hip-flexor-mobility": ["Take a comfortable split stance and keep both feet planted.", "Tuck the pelvis gently and shift forward until you feel the front of the rear hip.", "Keep the movement small and avoid arching the lower back."]
 };
 
 function showTip(index) {
@@ -2118,6 +5303,7 @@ function renderActive() {
     </section>
     <div class="active-actions">
       <button class="${completedCount ? 'primary-button' : 'ghost-button'}" onclick="advanceExercise()">${advanceLabel}</button>
+      <button class="text-button centered" onclick="finishEarly()">Finish early</button>
     </div>`;
 
   startUiTimer();
@@ -2194,9 +5380,10 @@ function updateSetValue(setIndex, field, value) {
 function toggleSet(setIndex) {
   const item = state.workout.exercises[state.activeIndex];
   item.setData[setIndex].done = !item.setData[setIndex].done;
-  if (item.setData[setIndex].done && item.rest > 0) {
+  const hasLaterWork = item.setData.slice(setIndex + 1).some(set => !set.done);
+  if (item.setData[setIndex].done && item.rest > 0 && hasLaterWork) {
     state.restUntil = Date.now() + (item.rest * 1000);
-  } else if (!item.setData[setIndex].done) {
+  } else {
     state.restUntil = null;
   }
   persistCurrent();
@@ -2258,11 +5445,8 @@ function swapActive() {
     state.session.startedAt = Date.now();
     return;
   }
-  const current = state.workout.exercises[state.activeIndex];
-  recordSwap(current, replacement);
-  state.workout.exercises[state.activeIndex] = replacementWithSamePrescription(replacement, current);
+  applySwapAt(state.activeIndex, replacement);
   state.session.startedAt = Date.now();
-  persistCurrent();
   renderActive();
 }
 
@@ -2305,66 +5489,146 @@ function pauseWorkout() {
   showWorkout();
 }
 
-function finishWorkout() {
+function completedSetCount() {
+  if (!state.workout) return 0;
+  return state.workout.exercises.reduce((sum, item) => sum + item.setData.filter(set => set.done).length, 0)
+    + (state.workout.completedSegments || []).reduce((sum, item) => sum + (item.sets || []).filter(set => set.done).length, 0);
+}
+
+function finishEarly() {
   pauseSessionClock();
   stopUiTimer();
+  const completedSets = completedSetCount();
+  if (!completedSets) {
+    showModal(
+      'End this workout?',
+      'No completed sets will be added to History.',
+      `<div class="modal-actions">
+        <button class="danger-button" onclick="closeCurrentModal(); discardWorkoutWithoutHistory()">Discard workout</button>
+        <button class="ghost-button" onclick="closeCurrentModal(); resumeWorkout()">Keep working</button>
+      </div>`
+    );
+    return;
+  }
 
-  const completedSets = state.workout.exercises.reduce(
-    (sum, item) => sum + item.setData.filter(set => set.done).length,
-    0
-  );
-  const completedExercises = state.workout.exercises.filter(item => item.setData.some(set => set.done)).length;
-  const prescribedSets = state.workout.exercises.reduce((sum, item) => sum + item.sets, 0);
-  const qualifiesForPlanAdvance = completedExercises >= Math.max(1, Math.ceil(state.workout.exercises.length / 2))
+  if (state.workout.source === 'plan') {
+    showModal(
+      'Finish early?',
+      'Your completed work will be saved. Choose what Form should do with this plan step.',
+      `<div class="modal-actions">
+        <button class="primary-button" onclick="closeCurrentModal(); finishWorkout(false)">Save · keep this step</button>
+        <button class="secondary-button" onclick="closeCurrentModal(); finishWorkout(true)">Save · move to next</button>
+        <button class="ghost-button" onclick="closeCurrentModal(); resumeWorkout()">Keep working</button>
+      </div>`
+    );
+  } else {
+    showModal(
+      'Finish early?',
+      'Your completed work will be saved as a partial workout.',
+      `<div class="modal-actions">
+        <button class="primary-button" onclick="closeCurrentModal(); finishWorkout(false)">Save partial workout</button>
+        <button class="ghost-button" onclick="closeCurrentModal(); resumeWorkout()">Keep working</button>
+      </div>`
+    );
+  }
+}
+
+function discardWorkoutWithoutHistory() {
+  state.workout = null;
+  state.answers = null;
+  state.session = { active: false, startedAt: null, elapsedMs: 0 };
+  state.activeIndex = 0;
+  state.restUntil = null;
+  safeRemove(STORAGE.current);
+  renderHome();
+}
+
+function finishWorkout(forcePlanAdvance = null) {
+  pauseSessionClock();
+  stopUiTimer();
+  if (!state.workout) return;
+
+  const completedSets = completedSetCount();
+  if (!completedSets) {
+    discardWorkoutWithoutHistory();
+    return;
+  }
+
+  const currentCompletedExercises = state.workout.exercises.filter(item => item.setData.some(set => set.done)).length;
+  const archivedCompletedExercises = (state.workout.completedSegments || []).filter(item => (item.sets || []).some(set => set.done)).length;
+  const completedExercises = currentCompletedExercises + archivedCompletedExercises;
+  const prescribedSets = state.workout.exercises.reduce((sum, item) => sum + item.sets, 0)
+    + (state.workout.completedSegments || []).reduce((sum, item) => sum + Number(item.prescription?.sets || 0), 0);
+  const automaticAdvance = completedExercises >= Math.max(1, Math.ceil(state.workout.exercises.length / 2))
     && completedSets >= Math.max(1, Math.ceil(prescribedSets / 2));
+  const qualifiesForPlanAdvance = forcePlanAdvance === null ? automaticAdvance : Boolean(forcePlanAdvance);
+  const planIdentityMatches = state.workout.source === 'plan'
+    && state.workout.planName === state.profile.splitName
+    && Number(state.workout.planIndex) === Number(state.profile.splitIndex);
+  const shouldAdvance = Boolean(qualifiesForPlanAdvance && planIdentityMatches);
+  const recordId = `history-${state.workout.id}`;
+
+  const currentDetails = state.workout.exercises.map((item, index) => ({
+    id: item.id,
+    name: item.name,
+    family: item.family,
+    pattern: item.pattern,
+    muscle: item.muscle,
+    kind: item.kind,
+    tracking: item.tracking,
+    unilateral: Boolean(item.unilateral),
+    sideBasis: item.sideBasis || '',
+    loadBasis: item.loadBasis || '',
+    order: index,
+    prescription: { sets: item.sets, reps: item.reps, rest: item.rest },
+    skipped: state.workout.skipped.includes(item.id),
+    sets: item.setData.map(set => ({ ...set }))
+  }));
+
+  const allDetails = [...(state.workout.completedSegments || []).map(item => ({ ...clone(item), skipped: false })), ...currentDetails]
+    .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
 
   const record = {
-    id: `history-${Date.now()}`,
+    id: recordId,
     date: new Date().toISOString(),
     title: state.workout.title,
     minutes: Math.max(1, Math.round(state.session.elapsedMs / 60000)),
-    exercises: state.workout.exercises.length,
+    exercises: allDetails.length,
     completedSets,
     completedExercises,
     prescribedSets,
-    planAdvanced: state.workout.source === 'plan' ? qualifiesForPlanAdvance : null,
+    partial: forcePlanAdvance === false || !automaticAdvance,
+    planAdvanced: state.workout.source === 'plan' ? shouldAdvance : null,
     focuses: [...state.workout.focuses],
     source: state.workout.source,
+    planName: state.workout.planName || null,
+    constraints: [...(state.workout.constraints || [])],
     feedback: 'Not rated',
     swaps: clone(state.workout.swaps || []),
     skipped: [...(state.workout.skipped || [])],
-    details: state.workout.exercises.map(item => ({
-      id: item.id,
-      name: item.name,
-      family: item.family,
-      pattern: item.pattern,
-      muscle: item.muscle,
-      kind: item.kind,
-      tracking: item.tracking,
-      unilateral: Boolean(item.unilateral),
-      prescription: {
-        sets: item.sets,
-        reps: item.reps,
-        rest: item.rest
-      },
-      skipped: state.workout.skipped.includes(item.id),
-      sets: item.setData.map(set => ({ ...set }))
-    }))
+    details: allDetails
   };
 
-  state.history.unshift(record);
-  safeSave(STORAGE.history, state.history);
-
-  if (
-    state.workout.source === 'plan' &&
-    qualifiesForPlanAdvance &&
-    Number(state.workout.planIndex) === Number(state.profile.splitIndex)
-  ) {
-    state.profile.splitIndex = (state.profile.splitIndex + 1) % state.profile.splitSequence.length;
-    state.profile.updatedAt = new Date().toISOString();
-    safeSave(STORAGE.profile, state.profile);
+  const newHistory = [record, ...state.history.filter(item => item.id !== recordId)];
+  if (!safeSave(STORAGE.history, newHistory)) {
+    showStorageFailure('Form could not save this workout. Your current workout is still open so nothing is lost.');
+    resumeWorkout();
+    return;
   }
 
+  if (shouldAdvance) {
+    const updatedProfile = clone(state.profile);
+    updatedProfile.splitIndex = (updatedProfile.splitIndex + 1) % updatedProfile.splitSequence.length;
+    updatedProfile.updatedAt = new Date().toISOString();
+    if (!safeSave(STORAGE.profile, updatedProfile)) {
+      showStorageFailure('Your workout was saved, but Form could not safely advance the training plan. Try again before closing the app.');
+      resumeWorkout();
+      return;
+    }
+    state.profile = updatedProfile;
+  }
+
+  state.history = newHistory;
   state.lastCompletedId = record.id;
   state.workout = null;
   state.answers = null;
@@ -2418,20 +5682,22 @@ function setCompletionFeedback(id, feedback) {
 }
 
 function persistCurrent() {
-  if (!state.workout) {
-    safeRemove(STORAGE.current);
-    return;
-  }
-
-  safeSave(STORAGE.current, {
+  if (!state.workout) return safeRemove(STORAGE.current);
+  return safeSave(STORAGE.current, {
     answers: state.answers,
     workout: state.workout,
     activeIndex: state.activeIndex,
+    restUntil: state.restUntil,
     session: {
       active: state.session.active,
       elapsedMs: getElapsedMs()
     }
   });
+}
+
+function showStorageFailure(message) {
+  storageIssue = true;
+  showModal('Could not save', message || 'Form could not save to this device. Keep the app open and export a backup if possible.');
 }
 
 function showHistory() {
@@ -2541,6 +5807,7 @@ function showMenu() {
       ${menuItem('Equipment', 'What Form can use', 'showEquipmentSettings()')}
       ${menuItem('Preferences', 'Goal, duration, limitations and priorities', 'showPreferencesSettings()')}
       ${menuItem('History', 'Review completed workouts', 'showHistory()')}
+      ${menuItem('Data & Backup', 'Export or restore your Form data', 'showDataBackup()')}
       ${menuItem('About Me', 'Why Form was created', 'showAboutMe()')}
       ${menuItem('Help / Send Feedback', 'Share a beta bug or suggestion', 'showHelp()')}
     </div>`
@@ -2662,13 +5929,23 @@ function showEquipmentSettings() {
   renderEquipmentSettings();
 }
 
+function renderDetailOptions(choices, draft) {
+  return choices.map(([value, label]) => optionButton(
+    label,
+    Boolean(draft.equipmentDetails?.[value]),
+    `toggleSettingsEquipmentDetail('${value}')`,
+    true
+  )).join('');
+}
+
 function renderEquipmentSettings() {
   const draft = state.settingsDraft;
+  draft.equipmentDetails = normalizeEquipmentDetails(draft.equipmentDetails, draft.setup, draft.equipment);
   app.innerHTML = `
     ${settingsHeader('Equipment')}
     <section class="hero">
       <h2 class="question-title">Available equipment</h2>
-      <p class="question-copy">Choose a common setup or fine-tune the list below.</p>
+      <p class="question-copy">Tell Form what is actually available. Supports and machines are checked separately so a dumbbell does not imply a bench.</p>
     </section>
     <div class="option-grid">
       ${Object.entries(setupPresets).filter(([key]) => key !== 'custom').map(([key, preset]) =>
@@ -2676,7 +5953,7 @@ function renderEquipmentSettings() {
       ).join('')}
     </div>
     <section class="card">
-      <div class="field-label">Fine-tune equipment</div>
+      <div class="field-label">Main equipment</div>
       <div class="option-grid two-column">
         ${equipmentChoices.map(([value, label]) => optionButton(
           label,
@@ -2687,12 +5964,23 @@ function renderEquipmentSettings() {
       </div>
       <p class="helper">Bodyweight movements are always available.</p>
     </section>
+    <section class="card">
+      <div class="field-label">Setup details</div>
+      <p class="helper" style="margin-top:0">Only choose things you can actually use for a workout.</p>
+      <div class="option-grid two-column">${renderDetailOptions(setupDetailChoices, draft)}</div>
+      ${draft.equipment.includes('barbell') ? `<div class="field-label field-gap">Barbell setup</div><div class="option-grid two-column">${renderDetailOptions(strengthSetupChoices, draft)}</div>` : ''}
+      ${draft.equipment.includes('bands') ? `<div class="field-label field-gap">Band anchors</div><div class="option-grid two-column">${renderDetailOptions(bandSetupChoices, draft)}</div>` : ''}
+      ${draft.equipment.includes('cable') ? `<div class="field-label field-gap">Cable setup</div><div class="option-grid two-column">${renderDetailOptions(cableSetupChoices, draft)}</div>` : ''}
+      ${draft.equipment.includes('cardio') ? `<div class="field-label field-gap">Cardio machines</div><div class="option-grid two-column">${renderDetailOptions(cardioSetupChoices, draft)}</div>` : ''}
+      ${draft.equipment.includes('machine') ? `<div class="field-label field-gap">Machines</div><div class="option-grid two-column">${renderDetailOptions(machineSetupChoices, draft)}</div>` : ''}
+    </section>
     ${settingsSaveBar("saveSettings('equipment')")}`;
 }
 
 function setSettingsSetup(value) {
   state.settingsDraft.setup = value;
   state.settingsDraft.equipment = [...setupPresets[value].equipment];
+  state.settingsDraft.equipmentDetails = defaultEquipmentDetails(value, state.settingsDraft.equipment);
   renderEquipmentSettings();
 }
 
@@ -2703,6 +5991,13 @@ function toggleSettingsEquipment(value) {
     : [...equipment, value];
   state.settingsDraft.equipment = [...new Set(['bodyweight', ...state.settingsDraft.equipment])];
   state.settingsDraft.setup = findMatchingSetup(state.settingsDraft.equipment) || 'custom';
+  state.settingsDraft.equipmentDetails = normalizeEquipmentDetails(state.settingsDraft.equipmentDetails, state.settingsDraft.setup, state.settingsDraft.equipment);
+  renderEquipmentSettings();
+}
+
+function toggleSettingsEquipmentDetail(value) {
+  state.settingsDraft.equipmentDetails = normalizeEquipmentDetails(state.settingsDraft.equipmentDetails, state.settingsDraft.setup, state.settingsDraft.equipment);
+  state.settingsDraft.equipmentDetails[value] = !state.settingsDraft.equipmentDetails[value];
   renderEquipmentSettings();
 }
 
@@ -2849,6 +6144,135 @@ function saveSettings(section) {
   renderHome();
 }
 
+function showDataBackup() {
+  stopUiTimer();
+  state.view = 'data-backup';
+  app.innerHTML = `
+    ${settingsHeader('Data & Backup')}
+    <section class="hero">
+      <h2 class="question-title">Keep your data recoverable</h2>
+      <p class="question-copy">Form stores your profile and workout history on this device. Export a backup before clearing browser data or moving phones.</p>
+    </section>
+    <section class="card">
+      <button class="primary-button" onclick="exportFormBackup()">Export backup</button>
+      <button class="secondary-button field-gap-small" onclick="document.getElementById('backupFile').click()">Import backup</button>
+      <input id="backupFile" type="file" accept="application/json,.json" class="visually-hidden" onchange="importFormBackup(this.files?.[0])" />
+      <p class="helper">Import replaces the current Form data only after the file is checked. Form keeps a temporary pre-import backup on this device.</p>
+    </section>
+    <section class="card">
+      <div class="field-label">Stored here</div>
+      <p class="helper">${state.history.length} workout${state.history.length === 1 ? '' : 's'} · profile · training plan · preferences${state.workout ? ' · current workout' : ''}</p>
+    </section>`;
+}
+
+function formBackupEnvelope() {
+  return {
+    product: 'Form',
+    backupSchema: 1,
+    appVersion: VERSION,
+    exportedAt: new Date().toISOString(),
+    profile: clone(state.profile),
+    history: clone(state.history),
+    behavior: clone(state.behavior),
+    current: state.workout ? {
+      answers: clone(state.answers),
+      workout: clone(state.workout),
+      activeIndex: state.activeIndex,
+      restUntil: state.restUntil,
+      session: { active: state.session.active, elapsedMs: getElapsedMs() }
+    } : null
+  };
+}
+
+async function exportFormBackup() {
+  const data = JSON.stringify(formBackupEnvelope(), null, 2);
+  const fileName = `form-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  const blob = new Blob([data], { type: 'application/json' });
+  const file = typeof File !== 'undefined' ? new File([blob], fileName, { type: 'application/json' }) : null;
+
+  try {
+    if (file && navigator.share && navigator.canShare?.({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Form backup' });
+      return;
+    }
+  } catch (error) {
+    if (error?.name === 'AbortError') return;
+  }
+
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function validateBackupEnvelope(data) {
+  if (!data || typeof data !== 'object') return 'This file is not a Form backup.';
+  if (data.product !== 'Form' || data.backupSchema !== 1) return 'This backup format is not supported.';
+  if (!data.profile || typeof data.profile !== 'object') return 'The backup is missing a profile.';
+  if (!Array.isArray(data.history)) return 'The backup history is invalid.';
+  if (data.history.some(item => !validHistoryRecord(item))) return 'The backup contains an invalid workout record.';
+  if (data.current && (typeof data.current !== 'object' || !data.current.workout)) return 'The current-workout data is invalid.';
+  return '';
+}
+
+async function importFormBackup(file) {
+  if (!file) return;
+  if (file.size > 5 * 1024 * 1024) {
+    showModal('Backup too large', 'Choose a Form backup smaller than 5 MB.');
+    return;
+  }
+
+  let data;
+  try {
+    data = JSON.parse(await file.text());
+  } catch {
+    showModal('Could not read backup', 'That file is not valid JSON. Your current Form data was not changed.');
+    return;
+  }
+
+  const error = validateBackupEnvelope(data);
+  if (error) {
+    showModal('Could not import backup', `${error} Your current Form data was not changed.`);
+    return;
+  }
+
+  const currentEnvelope = formBackupEnvelope();
+  if (!safeSave(STORAGE.preImport, currentEnvelope)) {
+    showStorageFailure('Form could not create a safety copy, so the import was cancelled.');
+    return;
+  }
+
+  const importedProfile = normalizeProfile(data.profile);
+  const importedHistory = data.history.filter(validHistoryRecord);
+  const importedBehavior = normalizeBehavior(data.behavior);
+  const writes = [
+    safeSave(STORAGE.profile, importedProfile),
+    safeSave(STORAGE.history, importedHistory),
+    safeSave(STORAGE.behavior, importedBehavior)
+  ];
+  if (data.current) writes.push(safeSave(STORAGE.current, data.current));
+  else writes.push(safeRemove(STORAGE.current));
+
+  if (writes.some(result => !result)) {
+    showStorageFailure('The import could not be completed safely. Your pre-import backup is still stored on this device.');
+    return;
+  }
+
+  state.profile = importedProfile;
+  state.history = importedHistory;
+  state.behavior = importedBehavior;
+  state.workout = data.current?.workout || null;
+  state.answers = data.current?.answers || null;
+  state.activeIndex = data.current?.activeIndex || 0;
+  state.restUntil = data.current?.restUntil || null;
+  state.session = { active: Boolean(data.current?.session?.active), startedAt: null, elapsedMs: data.current?.session?.elapsedMs || 0 };
+  showModal('Backup restored', 'Your Form data has been restored on this device.', `<div class="modal-actions"><button class="primary-button" onclick="closeCurrentModal(); renderHome()">Done</button></div>`);
+}
+
 function showAboutMe() {
   stopUiTimer();
   state.view = 'about';
@@ -2944,23 +6368,63 @@ function showFeedbackStatus(message) {
   if (status) status.textContent = message;
 }
 
+let modalReturnFocus = null;
+
 function showModal(title, text, customContent = '') {
+  closeCurrentModal(false);
+  modalReturnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  app.setAttribute('aria-hidden', 'true');
   document.body.insertAdjacentHTML('beforeend', `
     <div class="modal-backdrop" id="modal" onclick="closeModalFromBackdrop(event)">
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle" tabindex="-1">
         <h3 id="modalTitle">${escapeHtml(title)}</h3>
         ${text ? `<p>${escapeHtml(text)}</p>` : ''}
         ${customContent || '<div class="modal-actions"><button class="primary-button" onclick="closeCurrentModal()">Got it</button></div>'}
       </div>
     </div>`);
+  const dialog = document.querySelector('#modal .modal');
+  dialog?.focus();
+  document.addEventListener('keydown', handleModalKeydown);
+}
+
+function handleModalKeydown(event) {
+  const modal = document.getElementById('modal');
+  if (!modal) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeCurrentModal();
+    return;
+  }
+  if (event.key !== 'Tab') return;
+  const focusable = [...modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])')]
+    .filter(element => !element.disabled && element.offsetParent !== null);
+  if (!focusable.length) {
+    event.preventDefault();
+    modal.querySelector('.modal')?.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
 }
 
 function closeModalFromBackdrop(event) {
-  if (event.target.id === 'modal') event.target.remove();
+  if (event.target.id === 'modal') closeCurrentModal();
 }
 
-function closeCurrentModal() {
-  document.getElementById('modal')?.remove();
+function closeCurrentModal(restoreFocus = true) {
+  const modal = document.getElementById('modal');
+  if (modal) modal.remove();
+  document.removeEventListener('keydown', handleModalKeydown);
+  app.removeAttribute('aria-hidden');
+  if (restoreFocus && modalReturnFocus?.isConnected) modalReturnFocus.focus();
+  modalReturnFocus = null;
 }
 
 function openLatest() {
@@ -2996,8 +6460,48 @@ window.addEventListener('beforeunload', () => {
   persistCurrent();
 });
 
-if (location.protocol === 'https:' && 'serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js').catch(() => {});
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') persistCurrent();
+});
+
+let reloadingForUpdate = false;
+async function registerServiceWorker() {
+  if (location.protocol !== 'https:' || !('serviceWorker' in navigator)) return;
+  try {
+    const registration = await navigator.serviceWorker.register('./sw.js');
+    const offerUpdate = worker => {
+      if (!worker || state.session.active || document.getElementById('modal')) return;
+      showModal(
+        'Update ready',
+        'A newer version of Form is ready. Your current data will stay on this device.',
+        `<div class="modal-actions">
+          <button class="primary-button" onclick="applyWaitingUpdate()">Update Form</button>
+          <button class="ghost-button" onclick="closeCurrentModal()">Later</button>
+        </div>`
+      );
+    };
+    window.formServiceWorkerRegistration = registration;
+    if (registration.waiting) offerUpdate(registration.waiting);
+    registration.addEventListener('updatefound', () => {
+      const worker = registration.installing;
+      worker?.addEventListener('statechange', () => {
+        if (worker.state === 'installed' && navigator.serviceWorker.controller) offerUpdate(worker);
+      });
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadingForUpdate) return;
+      reloadingForUpdate = true;
+      location.reload();
+    });
+  } catch {}
 }
 
+function applyWaitingUpdate() {
+  persistCurrent();
+  const registration = window.formServiceWorkerRegistration;
+  if (registration?.waiting) registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+  closeCurrentModal(false);
+}
+
+registerServiceWorker();
 renderInitial();

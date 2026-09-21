@@ -1,29 +1,44 @@
-# Form v3.1 Programming Notes
+# Form v3.2 Programming Notes
 
-This document records the evidence-informed reasoning used for the v3.1 workout-engine update. It is an internal product note, not medical advice and not a claim that Form creates an objectively perfect workout.
+This file documents the beta programming and product rules used in v3.2. It is not medical advice and is not a claim that Form creates an objectively optimal workout.
 
-## Design principles used in v3.1
+## Core principle
 
-1. Consistency and adherence matter more than unnecessary programming complexity.
-2. Strength-focused compound work benefits from heavier loading and longer rest than small accessory movements.
-3. Muscle growth can occur across a broad range of loads, so hypertrophy programming should not be locked to one narrow rep range.
-4. Short rest is not required for hypertrophy, and rest longer than 60 seconds can help preserve training performance.
-5. Fat-loss goals do not require every resistance exercise to become a high-rep, short-rest circuit.
-6. Time-limited workouts should preserve higher-value training rather than randomly removing movements.
-7. Time-efficient methods can be useful, but Form v3.1 does not automatically force supersets into every workout.
+The user should provide only information that materially changes the workout. Form should handle the complexity behind the interface.
 
-## Sources reviewed for this release
+## Literal requirements
 
-- American College of Sports Medicine. 2026 resistance-training position stand and related ACSM guidance.
-- Currier BS et al. Resistance training prescription for muscle strength and hypertrophy in healthy adults: systematic review and Bayesian network meta-analysis. British Journal of Sports Medicine. 2023.
-- Singer A et al. Inter-set rest interval duration and muscle hypertrophy: systematic review and Bayesian meta-analysis. 2024.
-- Lopez P et al. Resistance-training load effects on muscle hypertrophy and strength gain: systematic review and network meta-analysis. Medicine & Science in Sports & Exercise. 2021.
-- Zhang X et al. Superset versus traditional resistance training prescriptions: systematic review and meta-analysis. 2025.
+Exercise eligibility now evaluates two separate layers:
 
-## Current limitations
+1. **Main equipment** such as dumbbells, bands, barbell, cable, machines, or cardio equipment.
+2. **Literal setup requirements** such as floor access, bench, chair, elevated support, wall, rack, landmine, fixed band anchor, specific machine type, or specific cardio machine.
 
-- Form does not calculate individualized one-repetition maximums.
-- Form does not currently track velocity, repetitions in reserve, or direct fatigue measurements.
-- Weekly muscle-volume logic is not yet a full periodization system.
-- Mobility and cardio prescriptions are deliberately simple.
-- The rule set has not yet been formally audited by a qualified fitness professional for commercial use.
+Temporary constraints always outrank preference and variety. Form must not quietly relax a stated restriction to fill the workout.
+
+## Today's context
+
+Temporary constraints live in Adjust Workout and expire after the generated workout is consumed. The normal profile remains unchanged.
+
+Examples include Dumbbells only, No bench, Standing only, No floor, No jumping, Quiet, and unavailable machine/cable conditions.
+
+## Progression
+
+v3.2 retains conservative load progression. A normal multi-set exercise requires at least two comparable completed working sets at the top of the current rep range before an increase is suggested. Blank or skipped work is not treated as successful performance.
+
+Progression remains editable and optional. Holding load steady or progressing repetitions is valid.
+
+## Dose and timing
+
+The v3.1 role-aware programming remains in place, with a v3.2 correction: the time-fitting pass may reduce work to fit the session but may not add sets beyond the exercise's original prescribed dose cap.
+
+Rest is counted between working sets, not after the final remaining set.
+
+## Swaps
+
+A swap replaces only remaining work. Completed sets from the old movement are preserved as an immutable completed segment for History and future performance review. The replacement is re-prescribed using its own movement metadata.
+
+## Evidence context
+
+The v3.1 research pass reviewed current ACSM resistance-training guidance and peer-reviewed evidence on load, volume, rest, progression, time-efficient training, and variation. The v3.2 independent audit additionally reviewed the complete exercise inventory and identified data-model, persistence, and usability risks.
+
+Before a broad commercial release, the complete exercise library and representative generated programs should receive qualified exercise-professional review.

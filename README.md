@@ -1,105 +1,98 @@
-# Form Beta v3.1
+# Form Beta v3.2
 
 Form is a mobile-first workout app built to remove workout decision fatigue.
 
 **Simple on the surface. Thoughtful underneath.**
 
-## What is new in v3.1
+## v3.2: Today's Setup + Reliability
 
-### Smarter time-based programming
+The visible headline in v3.2 is simple: Form can now understand what is different **today** without making the normal start flow longer.
 
-- Workout generation now estimates the actual session time from warm-up, exercise setup, working sets, rest periods, transitions, and cooldown.
-- Short sessions reduce lower-priority volume before removing important movements.
-- If useful time remains, Form adds productive volume to higher-value movements instead of adding filler exercises.
-- Cardio-only sessions now use one clear modality for the available active time instead of several unrelated cardio movements.
-- Mobility sessions use purposeful rounds and avoid unnecessary rest timers.
+Open **Adjust workout** and use **Anything different today?** for temporary constraints such as:
 
-### More exercise-aware prescriptions
+- Dumbbells only
+- No bench
+- No floor
+- Standing only
+- No jumping
+- Quiet workout
+- Small space
+- No kneeling
+- No overhead
+- No band anchor
+- No cable
+- No machines
+- No leg press
+- No hack squat
 
-- Strength compounds and accessories no longer receive the same rep and rest prescription just because they share the same goal.
-- Strength-focused plans use lower rep ranges and longer rest for compound lifts while keeping accessory work in more appropriate rep ranges.
-- Build-muscle programming uses broader evidence-informed rep ranges and longer rest for demanding compound work.
-- Fat-loss goals no longer force every resistance exercise into a short-rest, high-rep circuit.
-- Unilateral movements are labeled per side where appropriate.
+These changes expire after the workout and do not overwrite the user's normal setup.
 
-### Better exercise selection
+## Smarter equipment eligibility
 
-- Full-body and Pick for me choices now use actual recently completed exercises to estimate recent focus exposure.
-- Movement-family variety is preferred when building a session.
-- Loadable movements receive a modest preference for muscle-building and strength goals when the user's equipment allows them.
-- The structured exercise library was expanded from about 91 to more than 100 exercises.
+v3.2 separates the main training implement from the literal setup an exercise needs. A dumbbell exercise may still require a bench, seat, floor, step, or other support, so those requirements are now checked explicitly.
 
-### Better tracking and progression
+The Equipment screen can fine-tune:
 
-- Bodyweight movements no longer ask the user to type pounds.
-- Band exercises can record a band or resistance description.
-- Cardio can record effort without pretending the value is a weight.
-- Previous-performance summaries now keep weight and reps tied to the same actual set.
-- Conservative load progression is only suggested when the recorded working sets support it.
+- floor, wall, chair, bench, step, sliders, stability ball, and jump rope
+- rack and landmine setup
+- fixed band anchors
+- cable details such as dual towers, seated-row station, and ankle cuff
+- treadmill, bike, rower, and elliptical
+- common machine types such as leg press, hack squat, curls/extensions, hip abduction, pulldown, row, pec deck, chest press, and shoulder press
 
-### Better plan integrity
+## Reliability improvements
 
-- A planned workout must now be meaningfully completed before the training sequence advances.
-- Very partial sessions are still saved to history, but the planned workout remains next in the sequence.
+- Completed work survives exercise swaps.
+- Replacement exercises receive their own prescription.
+- Progression uses stronger completed-set evidence.
+- Time fitting respects dose limits.
+- Rest does not start after the last remaining set.
+- Finish Early can save a partial workout without trapping the user in the plan sequence.
+- Zero-work sessions are not recorded as completed workouts.
+- Plan advancement is tied to the plan that actually generated the workout.
+- Current rest state is recoverable after an interruption.
+- Storage failures are no longer silently treated as success.
 
-### Better instructions
+## Backup and restore
 
-- High-value common movements now use manually curated three-step How to instructions.
-- Other exercises keep the existing concise cue system.
-- Video support remains prepared in the data model but no unlicensed internet videos were added.
+Open the three-dot menu and choose **Data & Backup**.
 
-## Existing v3 features preserved
+Form can export a versioned JSON backup containing the user's profile, plan state, workout history, behavior preferences, and current workout. Import validates the file before replacing local data and creates a temporary pre-import safety copy first.
 
-- One-time onboarding.
-- Time-based greeting using the user's first name.
-- Sequence-based training plans.
-- Optional Adjust workout controls.
-- Profile, Training Plan, Equipment, Preferences, History, About Me, and Help / Send Feedback screens.
-- Smart swapping to a different movement family when possible.
-- Behavior learning from repeated swaps and skips.
-- Previous-performance recall and editable progression suggestions.
-- Resumable active workouts.
-- Tappable workout history.
-- Body-weight history.
-- Optional post-workout difficulty feedback.
-- Immediate rest-timer dismissal when Skip is tapped.
-- Approved Form F Home Screen icon.
+This is still a local-first beta. It does not provide an account, automatic cloud backup, or cross-device sync.
 
-## Data compatibility
+## Exercise library
 
-Form v3.1 intentionally keeps the existing v3 localStorage keys. Existing v3 profiles, history, behavior data, and resumable workouts remain compatible.
+Form v3.2 contains 108 exercises. Every shipped exercise has structured requirement metadata and a concise three-part How To guide.
 
-Uploading the updated files to GitHub does not erase browser data. Clearing browser website data, switching browsers, or moving to another device can still remove or separate local data because Form does not yet use accounts or cloud synchronization.
+The new targeted variants are:
 
-## Programming approach
+- Standing dumbbell row
+- Standing dumbbell shoulder press
+- Wall push-up
+- Standing hip-flexor mobility
 
-The v3.1 programming changes were reviewed against current resistance-training evidence, including the 2026 ACSM resistance-training position stand and peer-reviewed research on load, rest intervals, and time-efficient resistance training.
+Video support remains planned for a future owned or properly licensed demonstration library.
 
-The engine remains a rule-based beta rather than a replacement for individualized coaching. See `PROGRAMMING-NOTES.md` for the design rationale and sources used for this release.
+## Current architecture
 
-## GitHub Pages upload
+- Static HTML, CSS, and JavaScript
+- GitHub Pages deployment
+- Progressive Web App / iPhone Home Screen installation
+- Local browser storage
+- Service worker for offline reopening and controlled updates
+- No backend or external AI API
 
-See `GITHUB-UPLOAD-GUIDE.txt` for the exact steps.
+## Important beta limitations
 
-The GitHub Pages configuration remains:
+Form does not currently provide:
 
-- Source: Deploy from a branch
-- Branch: main
-- Folder: /(root)
-
-## Public beta limitations
-
-This remains a static beta stored in the current browser. It does not yet include:
-
-- accounts or cloud synchronization
-- licensed exercise demonstration videos
-- a hosted feedback database
-- analytics or crash reporting
-- subscription billing
+- accounts or authentication
+- automatic cloud backup or cross-device sync
 - Apple Health integration
-- App Store or TestFlight distribution
-- professional medical or coaching oversight
+- an owned exercise-video library
+- native App Store / TestFlight distribution
+- medical screening, diagnosis, or rehabilitation
+- professional coaching oversight of every generated workout
 
-The workout rules are more structured in v3.1, but the complete programming system has not been formally reviewed by a qualified fitness professional for commercial release.
-
-Form provides general fitness information, not medical advice. Stop if a movement causes pain. People with an injury, pregnancy, chronic condition, or concerning symptoms should obtain guidance from a qualified professional.
+The workout engine is evidence-informed, but it should not be described as producing an objectively perfect workout.

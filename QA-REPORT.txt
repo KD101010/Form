@@ -1,27 +1,52 @@
-FORM BETA V3.1 QA REPORT
+FORM BETA V3.2 QA REPORT
+
+RELEASE: 3.2.0 - Today's Setup + Reliability
 
 PASS: app.js syntax
 PASS: sw.js syntax
-PASS: Focused v3.1 regression suite
-  63 checks passed
+PASS: v3.2 focused regression harness
+  - literal dumbbell requirements
+  - no-bench / no-floor / standing-only filtering
+  - band anchor requirements
+  - specific machine exclusions
+  - beginner/Easier dose caps
+  - progression minimum evidence
+  - completed-work preservation during swaps
+  - backup envelope validation
+
 PASS: Generator matrix
-  1,624 generated workout scenarios checked
-  0 failures
-PASS: Equipment eligibility checks
-PASS: Limitation filtering checks
-PASS: Time-budget checks across strength, cardio, full-body, and multi-area sessions
-PASS: Previous-performance same-set regression
-PASS: Conservative progression regression
-PASS: Partial-plan non-advancement regression
-PASS: Completed-plan advancement regression
-PASS: Different-family swap regression
-PASS: Bodyweight tracking regression
-PASS: Existing approved icon files preserved
+  - 10,800 scenarios checked
+  - equipment presets: bodyweight, dumbbells, bands, home, full gym
+  - goals: general fitness, build muscle, get stronger, fat loss, maintain
+  - durations: 15, 20, 30, 45, 60, 75 minutes
+  - 12 focus combinations
+  - temporary contexts: none, no floor, standing only, no jumping, quiet, small space
+  - 10,500 scenarios generated a workout
+  - 300 returned no match where the requested setup/focus combination did not have an honest eligible pool
+  - 0 generated exercises violated the active eligibility rules
+  - 0 generated exercises exceeded their stored dose cap
 
-The matrix covered multiple goals, time budgets, focus combinations, bodyweight-only equipment, home-gym equipment, full-gym equipment, and common limitation filters.
+PASS: Original user-feedback acceptance cases
+  - dumbbells only does not assume a bench, chair, step, or rear-foot support
+  - dumbbell floor press remains possible when floor work is allowed
+  - no floor removes floor press
+  - standing only removes seated and floor work while retaining standing dumbbell variants
+  - bands without an anchor retain anchor-free options and remove fixed-anchor movements
+  - no leg press removes both leg press and its calf-raise variant
 
-Mobility sessions are intentionally allowed to finish shorter than a long requested time when adding more repeated mobility work would be filler rather than useful programming. Form displays an estimated-session note when the difference is material.
+PASS: Data model / release checks
+  - 108 exercise IDs
+  - 108 curated How To entries
+  - v3 storage keys preserved
+  - current-workout rest deadline persisted
+  - versioned backup export/import code present
+  - cache key and asset query strings updated to v3.2.0
 
-Browser-level visual and interaction testing was not completed in this environment. Physical iPhone Safari and installed Home Screen PWA testing still needs to be performed after GitHub Pages deployment.
+NOT COMPLETED IN THIS ENVIRONMENT
+  - rendered browser interaction test: local Chromium navigation is blocked by the execution environment administrator
+  - physical iPhone Safari / Home Screen PWA session
+  - VoiceOver and Dynamic Type / large-text verification on device
+  - real-world workout-duration accuracy
+  - independent qualified exercise-professional review of the final 108-exercise library
 
-This is beta validation. It is not a substitute for broad device coverage or formal review by a qualified fitness professional.
+This is beta validation, not certification.
