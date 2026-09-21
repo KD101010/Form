@@ -1,10 +1,10 @@
 const CACHE_PREFIX = 'form-';
-const CACHE = 'form-v3-2-20260921';
+const CACHE = 'form-v3-2-1-20260921';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=3.2.0',
-  './app.js?v=3.2.0',
+  './styles.css?v=3.2.1',
+  './app.js?v=3.2.1',
   './manifest.webmanifest',
   './icon-192-v3.png',
   './icon-512-v3.png',
