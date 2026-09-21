@@ -1,6 +1,6 @@
 const app = document.getElementById('app');
 
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 
 const STORAGE = {
   profile: 'form-profile-v3',
@@ -5888,10 +5888,10 @@ function renderTrainingPlanSettings() {
         ${[1, 2, 3, 4, 5, 6].map(value => chipButton(value, draft.daysPerWeek === value, `setPlanDays(${value})`)).join('')}
       </div>
     </section>
-    <div class="option-grid">
+    <div class="option-grid settings-block">
       ${optionButton('Let Form choose for me', draft.splitMode === 'form', "setPlanMode('form')", false, `Recommended: ${recommendation}`)}
     </div>
-    <div class="focus-section">
+    <div class="focus-section settings-block">
       <h3 class="focus-section-title">Choose my split</h3>
       <div class="option-grid">
         ${availableSplits(draft.daysPerWeek).map(name => optionButton(
@@ -5947,7 +5947,7 @@ function renderEquipmentSettings() {
       <h2 class="question-title">Available equipment</h2>
       <p class="question-copy">Tell Form what is actually available. Supports and machines are checked separately so a dumbbell does not imply a bench.</p>
     </section>
-    <div class="option-grid">
+    <div class="option-grid settings-block">
       ${Object.entries(setupPresets).filter(([key]) => key !== 'custom').map(([key, preset]) =>
         optionButton(preset.label, draft.setup === key, `setSettingsSetup('${key}')`)
       ).join('')}
@@ -6058,7 +6058,7 @@ function renderPreferencesSettings() {
 }
 
 function settingsSaveBar(action) {
-  return `<div class="builder-actions">
+  return `<div class="builder-actions settings-save-bar">
     <div class="footer-actions">
       <button class="ghost-button" onclick="renderHome()">Cancel</button>
       <button class="primary-button" onclick="${action}">Save changes</button>
