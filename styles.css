@@ -27,6 +27,19 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+/* Keep scrolled content from showing underneath the iPhone status area. */
+body::before {
+  content: "";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: env(safe-area-inset-top);
+  background: var(--bg);
+  z-index: 20;
+  pointer-events: none;
+}
 button, input { font: inherit; }
 button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
 button:disabled { cursor: not-allowed; opacity: .45; }
@@ -312,6 +325,30 @@ input[type="range"] {
 }
 .footer-actions.single { grid-template-columns: 1fr; }
 
+/* Settings pages should never place Save/Cancel on top of form controls. */
+.settings-save-bar {
+  position: static;
+  bottom: auto;
+  z-index: auto;
+  margin-top: 18px;
+  margin-bottom: max(8px, env(safe-area-inset-bottom));
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* Consistent separation between large settings sections. */
+.card + .settings-block,
+.settings-block + .card {
+  margin-top: 14px;
+}
+.settings-block + .settings-block {
+  margin-top: 24px;
+}
+
 .workout-head {
   display: flex;
   align-items: flex-start;
@@ -524,17 +561,21 @@ input[type="range"] {
 
 .modal-backdrop {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: calc(-1 * env(safe-area-inset-bottom));
+  min-height: 100dvh;
   background: rgba(24,23,21,.44);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 12px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
   z-index: 30;
 }
 .modal {
   width: min(100%, 560px);
-  max-height: min(86vh, 720px);
+  max-height: min(calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 24px), 720px);
   overflow: auto;
   background: var(--bg);
   border-radius: 28px;
